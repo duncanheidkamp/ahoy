@@ -4,25 +4,58 @@ import { getMessaging, Messaging } from 'firebase-admin/messaging'
 let app: App | undefined
 let messaging: Messaging | undefined
 
+function formatPrivateKey(key: string | undefined): string | undefined {
+  if (!key) return undefined
+
+  // Handle various formats the key might be in
+  let formatted = key
+
+  // Remove surrounding quotes if present
+  if ((formatted.startsWith('"') && formatted.endsWith('"')) ||
+      (formatted.startsWith("'") && formatted.endsWith("'"))) {
+    formatted = formatted.slice(1, -1)
+  }
+
+  // Replace literal \n with actual newlines
+  formatted = formatted.replace(/\\n/g, '\n')
+
+  // Ensure proper PEM format
+  if (!formatted.includes('-----BEGIN')) {
+    console.error('Private key does not appear to be in PEM format')
+    return undefined
+  }
+
+  return formatted
+}
+
 function getFirebaseAdmin() {
   if (!app && getApps().length === 0) {
     // Check for service account credentials
     const projectId = process.env.FIREBASE_PROJECT_ID || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID
     const clientEmail = process.env.FIREBASE_CLIENT_EMAIL
-    const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n')
+    const privateKey = formatPrivateKey(process.env.FIREBASE_PRIVATE_KEY)
 
     if (!projectId || !clientEmail || !privateKey) {
-      console.warn('Firebase Admin credentials not configured')
+      console.warn('Firebase Admin credentials not configured:', {
+        hasProjectId: !!projectId,
+        hasClientEmail: !!clientEmail,
+        hasPrivateKey: !!privateKey
+      })
       return { app: undefined, messaging: undefined }
     }
 
-    app = initializeApp({
-      credential: cert({
-        projectId,
-        clientEmail,
-        privateKey,
-      }),
-    })
+    try {
+      app = initializeApp({
+        credential: cert({
+          projectId,
+          clientEmail,
+          privateKey,
+        }),
+      })
+    } catch (error) {
+      console.error('Failed to initialize Firebase Admin:', error)
+      return { app: undefined, messaging: undefined }
+    }
   } else if (!app) {
     app = getApps()[0]
   }
