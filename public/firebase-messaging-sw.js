@@ -3,12 +3,13 @@ importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js')
 importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-messaging-compat.js');
 
 // Initialize Firebase in the service worker
+// Note: These values are safe to expose (they're public client-side keys)
 firebase.initializeApp({
-  apiKey: self.FIREBASE_API_KEY,
-  authDomain: self.FIREBASE_AUTH_DOMAIN,
-  projectId: self.FIREBASE_PROJECT_ID,
-  messagingSenderId: self.FIREBASE_MESSAGING_SENDER_ID,
-  appId: self.FIREBASE_APP_ID,
+  apiKey: 'AIzaSyBwU_Rukd-jTfDzlVa_69KaGdsRFVIxjuQ',
+  authDomain: 'ahoy-ffcf3.firebaseapp.com',
+  projectId: 'ahoy-ffcf3',
+  messagingSenderId: '607901672859',
+  appId: '1:607901672859:web:e0b580ec1ef91467bb2d3e',
 });
 
 const messaging = firebase.messaging();
