@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { FriendCard } from './friend-card'
 import { setupMessageListener } from '@/lib/firebase/notifications'
-import { playShipBell } from '@/lib/sounds/ship-bell'
+import { playShipBell, unlockAudio } from '@/lib/sounds/ship-bell'
 import type { User } from '@/lib/supabase/types'
 
 interface FriendListProps {
@@ -15,6 +15,24 @@ interface FriendListProps {
 export function FriendList({ initialFriends, currentUserId }: FriendListProps) {
   const [friends, setFriends] = useState<User[]>(initialFriends)
   const supabase = createClient()
+
+  // Unlock audio on first user interaction
+  useEffect(() => {
+    const handleInteraction = () => {
+      unlockAudio()
+      // Remove listeners after first interaction
+      document.removeEventListener('click', handleInteraction)
+      document.removeEventListener('touchstart', handleInteraction)
+    }
+
+    document.addEventListener('click', handleInteraction)
+    document.addEventListener('touchstart', handleInteraction)
+
+    return () => {
+      document.removeEventListener('click', handleInteraction)
+      document.removeEventListener('touchstart', handleInteraction)
+    }
+  }, [])
 
   // Listen for incoming Ahoy messages and play sound
   useEffect(() => {

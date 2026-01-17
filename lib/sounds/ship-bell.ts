@@ -2,6 +2,7 @@
 
 // Ship bell sound synthesizer using Web Audio API
 let audioContext: AudioContext | null = null
+let audioUnlocked = false
 
 function getAudioContext(): AudioContext {
   if (!audioContext) {
@@ -10,11 +11,36 @@ function getAudioContext(): AudioContext {
   return audioContext
 }
 
+// Call this on first user interaction to unlock audio
+export function unlockAudio(): void {
+  if (audioUnlocked) return
+
+  try {
+    const ctx = getAudioContext()
+
+    // Create and play a silent buffer to unlock audio
+    const buffer = ctx.createBuffer(1, 1, 22050)
+    const source = ctx.createBufferSource()
+    source.buffer = buffer
+    source.connect(ctx.destination)
+    source.start(0)
+
+    if (ctx.state === 'suspended') {
+      ctx.resume()
+    }
+
+    audioUnlocked = true
+    console.log('Audio unlocked')
+  } catch (e) {
+    console.error('Failed to unlock audio:', e)
+  }
+}
+
 export async function playShipBell(): Promise<void> {
   try {
     const ctx = getAudioContext()
 
-    // Resume context if suspended (browsers require user interaction)
+    // Resume context if suspended
     if (ctx.state === 'suspended') {
       await ctx.resume()
     }
@@ -34,13 +60,13 @@ export async function playShipBell(): Promise<void> {
 
     // Bell envelope - quick attack, longer decay
     gainNode.gain.setValueAtTime(0, now)
-    gainNode.gain.linearRampToValueAtTime(0.6, now + 0.01) // Quick attack
-    gainNode.gain.exponentialRampToValueAtTime(0.01, now + 1.5) // Long decay
+    gainNode.gain.linearRampToValueAtTime(0.6, now + 0.01)
+    gainNode.gain.exponentialRampToValueAtTime(0.01, now + 1.5)
 
     // Add harmonics for richer bell sound
     const harmonic = ctx.createOscillator()
     const harmonicGain = ctx.createGain()
-    harmonic.frequency.setValueAtTime(659 * 2.4, now) // Higher harmonic
+    harmonic.frequency.setValueAtTime(659 * 2.4, now)
     harmonic.type = 'sine'
     harmonicGain.gain.setValueAtTime(0, now)
     harmonicGain.gain.linearRampToValueAtTime(0.2, now + 0.01)
@@ -63,6 +89,7 @@ export async function playShipBell(): Promise<void> {
       playBellStrike(ctx)
     }, 300)
 
+    console.log('Ship bell played')
   } catch (error) {
     console.error('Failed to play ship bell:', error)
   }
