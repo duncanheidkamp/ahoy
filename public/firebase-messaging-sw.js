@@ -1,83 +1,62 @@
 // Firebase Cloud Messaging Service Worker
 console.log('[Firebase SW] Loading service worker...');
 
-importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js');
-importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-messaging-compat.js');
-
-console.log('[Firebase SW] Scripts loaded, initializing Firebase...');
-
-// Initialize Firebase in the service worker
-// Note: These values are safe to expose (they're public client-side keys)
-firebase.initializeApp({
-  apiKey: 'AIzaSyBwU_Rukd-jTfDzlVa_69KaGdsRFVIxjuQ',
-  authDomain: 'ahoy-ffcf3.firebaseapp.com',
-  projectId: 'ahoy-ffcf3',
-  messagingSenderId: '607901672859',
-  appId: '1:607901672859:web:e0b580ec1ef91467bb2d3e',
-});
-
-console.log('[Firebase SW] Firebase initialized');
-
-const messaging = firebase.messaging();
-
-// Log any push event
+// Handle push events directly - show notification immediately
 self.addEventListener('push', (event) => {
   console.log('[Firebase SW] Push event received:', event);
-  console.log('[Firebase SW] Push data:', event.data?.text());
-});
 
-// Handle background messages
-messaging.onBackgroundMessage((payload) => {
-  console.log('Received background message:', payload);
+  let data = {};
+  let notification = {};
 
-  const notificationTitle = payload.notification?.title || 'Ahoy!';
-  const notificationOptions = {
-    body: payload.notification?.body || 'Someone sent you an Ahoy!',
+  try {
+    const payload = event.data?.json();
+    console.log('[Firebase SW] Push payload:', payload);
+    data = payload.data || {};
+    notification = payload.notification || {};
+  } catch (e) {
+    console.log('[Firebase SW] Could not parse push data:', e);
+  }
+
+  const title = notification.title || data.title || 'Ahoy!';
+  const options = {
+    body: notification.body || data.body || 'Someone sent you an Ahoy!',
     icon: '/icons/icon-192.png',
     badge: '/icons/icon-72.png',
     tag: 'ahoy-notification',
     renotify: true,
-    data: payload.data,
+    requireInteraction: true,
+    data: data,
     actions: [
-      {
-        action: 'ahoy_back',
-        title: 'Ahoy back!',
-      },
-      {
-        action: 'dismiss',
-        title: 'Dismiss',
-      },
+      { action: 'ahoy_back', title: 'Ahoy back!' },
+      { action: 'dismiss', title: 'Dismiss' },
     ],
   };
 
-  self.registration.showNotification(notificationTitle, notificationOptions);
+  console.log('[Firebase SW] Showing notification:', title, options);
+
+  event.waitUntil(
+    self.registration.showNotification(title, options)
+  );
 });
 
 // Handle notification click
 self.addEventListener('notificationclick', (event) => {
-  console.log('Notification clicked:', event);
+  console.log('[Firebase SW] Notification clicked:', event);
 
   event.notification.close();
 
   if (event.action === 'ahoy_back') {
-    // Handle "Ahoy back" action
     const senderId = event.notification.data?.senderId;
     if (senderId) {
-      // Open the app and trigger ahoy back
       event.waitUntil(
         clients.matchAll({ type: 'window' }).then((clientList) => {
-          // If app is open, focus it and send message
           for (const client of clientList) {
             if (client.url.includes('/dashboard') && 'focus' in client) {
               client.focus();
-              client.postMessage({
-                type: 'AHOY_BACK',
-                senderId: senderId,
-              });
+              client.postMessage({ type: 'AHOY_BACK', senderId });
               return;
             }
           }
-          // If app is not open, open it
           if (clients.openWindow) {
             return clients.openWindow(`/dashboard?ahoyBack=${senderId}`);
           }
@@ -85,7 +64,6 @@ self.addEventListener('notificationclick', (event) => {
       );
     }
   } else {
-    // Default: open the dashboard
     event.waitUntil(
       clients.matchAll({ type: 'window' }).then((clientList) => {
         for (const client of clientList) {
