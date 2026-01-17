@@ -6,6 +6,15 @@ import { createClient } from '@/lib/supabase/client'
 const VAPID_KEY = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY
 
 export async function requestNotificationPermission(): Promise<string | null> {
+  if (typeof window === 'undefined') {
+    return null
+  }
+
+  if (!('serviceWorker' in navigator)) {
+    console.log('Service workers not supported')
+    return null
+  }
+
   if (!messaging) {
     console.log('Firebase messaging not available')
     return null
@@ -13,9 +22,20 @@ export async function requestNotificationPermission(): Promise<string | null> {
 
   try {
     const permission = await Notification.requestPermission()
+    console.log('Notification permission:', permission)
 
     if (permission === 'granted') {
-      const token = await getToken(messaging, { vapidKey: VAPID_KEY })
+      // Wait for the Firebase service worker to be ready
+      const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js')
+      await navigator.serviceWorker.ready
+      console.log('Service worker ready:', registration.scope)
+
+      const token = await getToken(messaging, {
+        vapidKey: VAPID_KEY,
+        serviceWorkerRegistration: registration
+      })
+
+      console.log('FCM token obtained:', token ? 'yes' : 'no')
 
       if (token) {
         // Save token to database
