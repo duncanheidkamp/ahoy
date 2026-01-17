@@ -10,31 +10,40 @@ export function NotificationPrompt() {
   const [isRequesting, setIsRequesting] = useState(false)
 
   useEffect(() => {
-    // Check if we should show the prompt
-    if (typeof window !== 'undefined' && 'Notification' in window) {
+    // Check if we should show the prompt after service worker is ready
+    const checkAndShowPrompt = async () => {
+      if (typeof window === 'undefined' || !('Notification' in window)) {
+        return
+      }
+
       const permission = Notification.permission
       const dismissed = localStorage.getItem('notificationPromptDismissed')
 
       if (permission === 'default' && !dismissed) {
+        // Wait for service worker to be ready first
+        if ('serviceWorker' in navigator) {
+          try {
+            await navigator.serviceWorker.ready
+            console.log('Service worker ready, showing notification prompt')
+          } catch (e) {
+            console.error('Service worker not ready:', e)
+          }
+        }
         // Delay showing prompt for better UX
-        const timer = setTimeout(() => setShowPrompt(true), 2000)
-        return () => clearTimeout(timer)
+        setTimeout(() => setShowPrompt(true), 1000)
       }
     }
+
+    // Delay initial check to allow service worker to register
+    const timer = setTimeout(checkAndShowPrompt, 2000)
+    return () => clearTimeout(timer)
   }, [])
 
   const handleEnable = async () => {
     setIsRequesting(true)
     try {
       const token = await requestNotificationPermission()
-      if (token) {
-        // Save token to server
-        await fetch('/api/users/fcm-token', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token }),
-        })
-      }
+      console.log('Token result:', token ? 'obtained' : 'failed')
     } catch (error) {
       console.error('Failed to enable notifications:', error)
     } finally {

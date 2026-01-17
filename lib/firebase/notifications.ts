@@ -5,13 +5,26 @@ import { createClient } from '@/lib/supabase/client'
 
 const VAPID_KEY = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY
 
-export async function requestNotificationPermission(): Promise<string | null> {
-  if (typeof window === 'undefined') {
+// Helper to wait for service worker to be ready with pushManager
+async function waitForServiceWorkerReady(): Promise<ServiceWorkerRegistration | null> {
+  if (!('serviceWorker' in navigator)) {
+    console.log('Service workers not supported')
     return null
   }
 
-  if (!('serviceWorker' in navigator)) {
-    console.log('Service workers not supported')
+  try {
+    // Use the ready promise which waits for an active service worker
+    const registration = await navigator.serviceWorker.ready
+    console.log('Service worker ready:', registration.scope)
+    return registration
+  } catch (error) {
+    console.error('Service worker not ready:', error)
+    return null
+  }
+}
+
+export async function requestNotificationPermission(): Promise<string | null> {
+  if (typeof window === 'undefined') {
     return null
   }
 
@@ -24,48 +37,34 @@ export async function requestNotificationPermission(): Promise<string | null> {
     const permission = await Notification.requestPermission()
     console.log('Notification permission:', permission)
 
-    if (permission === 'granted') {
-      console.log('Getting FCM token...')
+    if (permission !== 'granted') {
+      console.log('Notification permission denied')
+      return null
+    }
 
-      // First ensure service worker is registered and ready
-      const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
-        scope: '/'
-      })
+    console.log('Waiting for service worker...')
+    const registration = await waitForServiceWorkerReady()
 
-      // Wait until the service worker is active
-      await new Promise<void>((resolve) => {
-        if (registration.active) {
-          resolve()
-          return
-        }
+    if (!registration) {
+      console.error('No service worker registration available')
+      return null
+    }
 
-        const sw = registration.installing || registration.waiting
-        if (sw) {
-          sw.addEventListener('statechange', function onStateChange() {
-            if (sw.state === 'activated') {
-              sw.removeEventListener('statechange', onStateChange)
-              resolve()
-            }
-          })
-        } else {
-          resolve()
-        }
-      })
+    // Small delay to ensure pushManager is fully initialized
+    await new Promise(resolve => setTimeout(resolve, 100))
 
-      console.log('Service worker active, getting token...')
+    console.log('Getting FCM token...')
 
-      const token = await getToken(messaging, {
-        vapidKey: VAPID_KEY,
-        serviceWorkerRegistration: registration
-      })
+    const token = await getToken(messaging, {
+      vapidKey: VAPID_KEY,
+      serviceWorkerRegistration: registration
+    })
 
-      console.log('FCM token obtained:', token ? 'yes' : 'no')
+    console.log('FCM token obtained:', token ? 'yes' : 'no')
 
-      if (token) {
-        // Save token to database
-        await saveTokenToDatabase(token)
-        return token
-      }
+    if (token) {
+      await saveTokenToDatabase(token)
+      return token
     }
 
     return null
