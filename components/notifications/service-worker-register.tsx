@@ -5,10 +5,9 @@ import { useEffect } from 'react'
 export function ServiceWorkerRegister() {
   useEffect(() => {
     if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
-      // Only register the Firebase messaging service worker
-      // It handles both push notifications and can be extended for offline support
+      // Register the Firebase messaging service worker with root scope
       navigator.serviceWorker
-        .register('/firebase-messaging-sw.js')
+        .register('/firebase-messaging-sw.js', { scope: '/' })
         .then((registration) => {
           console.log('Firebase SW registered:', registration.scope)
         })

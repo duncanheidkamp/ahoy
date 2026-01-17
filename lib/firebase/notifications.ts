@@ -25,32 +25,34 @@ export async function requestNotificationPermission(): Promise<string | null> {
     console.log('Notification permission:', permission)
 
     if (permission === 'granted') {
-      // Register and wait for the Firebase service worker to be fully active
-      let registration = await navigator.serviceWorker.getRegistration('/firebase-messaging-sw.js')
+      console.log('Getting FCM token...')
 
-      if (!registration) {
-        registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js')
-      }
+      // First ensure service worker is registered and ready
+      const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
+        scope: '/'
+      })
 
-      // Wait for the service worker to be ready and active
-      await navigator.serviceWorker.ready
+      // Wait until the service worker is active
+      await new Promise<void>((resolve) => {
+        if (registration.active) {
+          resolve()
+          return
+        }
 
-      // If the service worker is still installing or waiting, wait for it to activate
-      if (registration.installing || registration.waiting) {
-        await new Promise<void>((resolve) => {
-          const sw = registration!.installing || registration!.waiting
-          sw?.addEventListener('statechange', function handler() {
+        const sw = registration.installing || registration.waiting
+        if (sw) {
+          sw.addEventListener('statechange', function onStateChange() {
             if (sw.state === 'activated') {
-              sw.removeEventListener('statechange', handler)
+              sw.removeEventListener('statechange', onStateChange)
               resolve()
             }
           })
-          // Also resolve if already activated
-          if (registration!.active) resolve()
-        })
-      }
+        } else {
+          resolve()
+        }
+      })
 
-      console.log('Service worker ready:', registration.scope)
+      console.log('Service worker active, getting token...')
 
       const token = await getToken(messaging, {
         vapidKey: VAPID_KEY,
