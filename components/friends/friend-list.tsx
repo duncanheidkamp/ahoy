@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { FriendCard } from './friend-card'
+import { setupMessageListener } from '@/lib/firebase/notifications'
+import { playShipBell } from '@/lib/sounds/ship-bell'
 import type { User } from '@/lib/supabase/types'
 
 interface FriendListProps {
@@ -13,6 +15,20 @@ interface FriendListProps {
 export function FriendList({ initialFriends, currentUserId }: FriendListProps) {
   const [friends, setFriends] = useState<User[]>(initialFriends)
   const supabase = createClient()
+
+  // Listen for incoming Ahoy messages and play sound
+  useEffect(() => {
+    const unsubscribe = setupMessageListener((payload) => {
+      console.log('Received Ahoy in foreground:', payload)
+      playShipBell()
+    })
+
+    return () => {
+      if (typeof unsubscribe === 'function') {
+        unsubscribe()
+      }
+    }
+  }, [])
 
   // Subscribe to real-time friendship changes
   useEffect(() => {
