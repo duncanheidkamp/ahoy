@@ -14,6 +14,7 @@ interface FriendListProps {
 
 export function FriendList({ initialFriends, currentUserId }: FriendListProps) {
   const [friends, setFriends] = useState<User[]>(initialFriends)
+  const [ahoyReceived, setAhoyReceived] = useState<string | null>(null)
   const supabase = createClient()
 
   // Unlock audio on first user interaction
@@ -38,6 +39,12 @@ export function FriendList({ initialFriends, currentUserId }: FriendListProps) {
   useEffect(() => {
     const unsubscribe = setupMessageListener((payload) => {
       console.log('Received Ahoy in foreground:', payload)
+      // Show visual indicator
+      const senderName = (payload as { notification?: { title?: string } })?.notification?.title || 'Someone'
+      setAhoyReceived(senderName)
+      setTimeout(() => setAhoyReceived(null), 3000)
+      // Unlock and play - user has definitely interacted if they're on this page
+      unlockAudio()
       playShipBell()
     })
 
@@ -138,6 +145,14 @@ export function FriendList({ initialFriends, currentUserId }: FriendListProps) {
 
   return (
     <div className="p-4 space-y-3">
+      {/* Ahoy received toast */}
+      {ahoyReceived && (
+        <div className="fixed top-4 left-4 right-4 z-50 animate-pulse">
+          <div className="bg-amber-500 text-white p-4 rounded-lg shadow-xl text-center font-bold text-lg">
+            🔔 {ahoyReceived}
+          </div>
+        </div>
+      )}
       <div className="flex items-center gap-2 mb-4">
         <div className="w-6 h-6 text-amber-600">
           <svg viewBox="0 0 24 24" fill="currentColor">
