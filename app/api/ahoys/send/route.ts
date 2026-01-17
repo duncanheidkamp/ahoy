@@ -44,7 +44,10 @@ export async function POST(request: NextRequest) {
 
     // Send push notification if receiver has FCM token
     if (receiver.fcm_token) {
-      await sendPushNotification(
+      console.log('Sending push notification to:', receiver.username)
+      console.log('FCM token (first 20 chars):', receiver.fcm_token.substring(0, 20) + '...')
+
+      const pushResult = await sendPushNotification(
         receiver.fcm_token,
         'Ahoy!',
         `@${sender?.username} sent you an Ahoy!`,
@@ -54,6 +57,10 @@ export async function POST(request: NextRequest) {
           senderUsername: sender?.username || '',
         }
       )
+
+      console.log('Push notification result:', pushResult)
+    } else {
+      console.log('Receiver has no FCM token:', receiver.username)
     }
 
     return NextResponse.json({ success: true })

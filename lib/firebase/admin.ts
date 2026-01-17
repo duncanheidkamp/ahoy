@@ -81,7 +81,7 @@ export async function sendPushNotification(
   }
 
   try {
-    await messaging.send({
+    const messageId = await messaging.send({
       token,
       notification: {
         title,
@@ -104,6 +104,7 @@ export async function sendPushNotification(
       },
       data,
     })
+    console.log('Push notification sent successfully, messageId:', messageId)
     return true
   } catch (error) {
     console.error('Failed to send push notification:', error)
