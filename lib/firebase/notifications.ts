@@ -25,9 +25,31 @@ export async function requestNotificationPermission(): Promise<string | null> {
     console.log('Notification permission:', permission)
 
     if (permission === 'granted') {
-      // Wait for the Firebase service worker to be ready
-      const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js')
+      // Register and wait for the Firebase service worker to be fully active
+      let registration = await navigator.serviceWorker.getRegistration('/firebase-messaging-sw.js')
+
+      if (!registration) {
+        registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js')
+      }
+
+      // Wait for the service worker to be ready and active
       await navigator.serviceWorker.ready
+
+      // If the service worker is still installing or waiting, wait for it to activate
+      if (registration.installing || registration.waiting) {
+        await new Promise<void>((resolve) => {
+          const sw = registration!.installing || registration!.waiting
+          sw?.addEventListener('statechange', function handler() {
+            if (sw.state === 'activated') {
+              sw.removeEventListener('statechange', handler)
+              resolve()
+            }
+          })
+          // Also resolve if already activated
+          if (registration!.active) resolve()
+        })
+      }
+
       console.log('Service worker ready:', registration.scope)
 
       const token = await getToken(messaging, {
