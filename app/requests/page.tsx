@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Button } from '@/components/ui/button'
 import type { User, Friendship } from '@/lib/supabase/types'
 
 interface RequestWithUser extends Friendship {
@@ -14,7 +13,6 @@ export default function RequestsPage() {
   const [incoming, setIncoming] = useState<RequestWithUser[]>([])
   const [outgoing, setOutgoing] = useState<RequestWithUser[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const supabase = createClient()
 
   useEffect(() => {
@@ -26,16 +24,13 @@ export default function RequestsPage() {
     try {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
-      setCurrentUserId(user.id)
 
-      // Get incoming requests
       const { data: incomingData } = await supabase
         .from('friendships')
         .select('*, requester:users!friendships_requester_id_fkey(*), addressee:users!friendships_addressee_id_fkey(*)')
         .eq('addressee_id', user.id)
         .eq('status', 'pending')
 
-      // Get outgoing requests
       const { data: outgoingData } = await supabase
         .from('friendships')
         .select('*, requester:users!friendships_requester_id_fkey(*), addressee:users!friendships_addressee_id_fkey(*)')
@@ -58,7 +53,6 @@ export default function RequestsPage() {
         .update({ status: 'accepted' })
         .eq('id', requestId)
 
-      // Remove from incoming list
       setIncoming((prev) => prev.filter((r) => r.id !== requestId))
     } catch (error) {
       console.error('Failed to accept request:', error)
@@ -72,7 +66,6 @@ export default function RequestsPage() {
         .update({ status: 'declined' })
         .eq('id', requestId)
 
-      // Remove from incoming list
       setIncoming((prev) => prev.filter((r) => r.id !== requestId))
     } catch (error) {
       console.error('Failed to decline request:', error)
@@ -86,7 +79,6 @@ export default function RequestsPage() {
         .delete()
         .eq('id', requestId)
 
-      // Remove from outgoing list
       setOutgoing((prev) => prev.filter((r) => r.id !== requestId))
     } catch (error) {
       console.error('Failed to cancel request:', error)
@@ -96,7 +88,7 @@ export default function RequestsPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="animate-spin w-8 h-8 border-4 border-amber-300 border-t-amber-600 rounded-full" />
+        <div className="animate-spin w-8 h-8 border-4 border-gray-700 border-t-purple-500 rounded-full" />
       </div>
     )
   }
@@ -105,85 +97,99 @@ export default function RequestsPage() {
     <div className="p-4">
       {/* Incoming Requests */}
       <div className="mb-8">
-        <div className="flex items-center gap-2 mb-4">
-          <div className="w-6 h-6 text-amber-600">
-            <svg viewBox="0 0 24 24" fill="currentColor">
-              <path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8l8 5 8-5v10zm-8-7L4 6h16l-8 5z"/>
-            </svg>
-          </div>
-          <h2 className="text-sm font-semibold text-amber-700 uppercase tracking-wide">
-            Messages in Bottles ({incoming.length})
-          </h2>
-        </div>
+        <h2
+          className="text-gray-400 text-sm font-bold uppercase tracking-wide mb-4"
+          style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}
+        >
+          Incoming ({incoming.length})
+        </h2>
 
         {incoming.length === 0 ? (
-          <div className="text-center py-6 text-amber-600 text-sm">
+          <div className="text-center py-6 text-gray-500"
+               style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}>
             No incoming requests
           </div>
         ) : (
-          <div className="space-y-3">
-            {incoming.map((request) => (
-              <div
-                key={request.id}
-                className="flex items-center gap-3 p-3 bg-white rounded-xl border-2 border-amber-200"
-              >
-                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-sky-500 to-sky-600 flex items-center justify-center text-white font-bold uppercase">
-                  {request.requester.username.charAt(0)}
+          <div className="space-y-2">
+            {incoming.map((request, index) => {
+              const colors = ['bg-green-500', 'bg-teal-500', 'bg-blue-500', 'bg-purple-500']
+              const colorClass = colors[index % colors.length]
+
+              return (
+                <div
+                  key={request.id}
+                  className={`flex items-center justify-between p-4 ${colorClass} rounded-lg`}
+                >
+                  <span
+                    className="text-white text-lg font-bold uppercase"
+                    style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}
+                  >
+                    {request.requester.username}
+                  </span>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => handleAccept(request.id)}
+                      className="px-4 py-2 bg-white text-gray-900 rounded font-bold uppercase text-sm hover:bg-gray-100"
+                      style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}
+                    >
+                      Accept
+                    </button>
+                    <button
+                      onClick={() => handleDecline(request.id)}
+                      className="px-4 py-2 bg-white/20 text-white rounded font-bold uppercase text-sm hover:bg-white/30"
+                      style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}
+                    >
+                      Decline
+                    </button>
+                  </div>
                 </div>
-                <div className="flex-1">
-                  <p className="font-semibold text-amber-900">@{request.requester.username}</p>
-                  <p className="text-xs text-amber-600">wants to join your crew</p>
-                </div>
-                <div className="flex gap-2">
-                  <Button size="sm" onClick={() => handleAccept(request.id)}>
-                    Accept
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={() => handleDecline(request.id)}>
-                    Decline
-                  </Button>
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>
 
       {/* Outgoing Requests */}
       <div>
-        <div className="flex items-center gap-2 mb-4">
-          <div className="w-6 h-6 text-amber-600">
-            <svg viewBox="0 0 24 24" fill="currentColor">
-              <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
-            </svg>
-          </div>
-          <h2 className="text-sm font-semibold text-amber-700 uppercase tracking-wide">
-            Sent Requests ({outgoing.length})
-          </h2>
-        </div>
+        <h2
+          className="text-gray-400 text-sm font-bold uppercase tracking-wide mb-4"
+          style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}
+        >
+          Pending ({outgoing.length})
+        </h2>
 
         {outgoing.length === 0 ? (
-          <div className="text-center py-6 text-amber-600 text-sm">
+          <div className="text-center py-6 text-gray-500"
+               style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}>
             No pending requests
           </div>
         ) : (
-          <div className="space-y-3">
-            {outgoing.map((request) => (
-              <div
-                key={request.id}
-                className="flex items-center gap-3 p-3 bg-white rounded-xl border-2 border-amber-200"
-              >
-                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-teal-500 to-teal-600 flex items-center justify-center text-white font-bold uppercase">
-                  {request.addressee.username.charAt(0)}
+          <div className="space-y-2">
+            {outgoing.map((request, index) => {
+              const colors = ['bg-orange-500', 'bg-pink-500', 'bg-rose-500', 'bg-amber-500']
+              const colorClass = colors[index % colors.length]
+
+              return (
+                <div
+                  key={request.id}
+                  className={`flex items-center justify-between p-4 ${colorClass} rounded-lg`}
+                >
+                  <span
+                    className="text-white text-lg font-bold uppercase"
+                    style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}
+                  >
+                    {request.addressee.username}
+                  </span>
+                  <button
+                    onClick={() => handleCancel(request.id)}
+                    className="px-4 py-2 bg-white/20 text-white rounded font-bold uppercase text-sm hover:bg-white/30"
+                    style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}
+                  >
+                    Cancel
+                  </button>
                 </div>
-                <div className="flex-1">
-                  <p className="font-semibold text-amber-900">@{request.addressee.username}</p>
-                  <p className="text-xs text-amber-600">pending...</p>
-                </div>
-                <Button size="sm" variant="ghost" onClick={() => handleCancel(request.id)}>
-                  Cancel
-                </Button>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>

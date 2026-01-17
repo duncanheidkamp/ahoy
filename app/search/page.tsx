@@ -2,9 +2,6 @@
 
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Input } from '@/components/ui/input'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
 import type { User } from '@/lib/supabase/types'
 
 export default function SearchPage() {
@@ -25,7 +22,6 @@ export default function SearchPage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
 
-      // Search for users by username
       const { data, error } = await supabase
         .from('users')
         .select('*')
@@ -37,7 +33,7 @@ export default function SearchPage() {
 
       setResults(data || [])
     } catch {
-      setError('Lost at sea - check your connection')
+      setError('Search failed - check your connection')
     } finally {
       setIsSearching(false)
     }
@@ -48,7 +44,6 @@ export default function SearchPage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
 
-      // Check if friendship already exists
       const { data: existing } = await supabase
         .from('friendships')
         .select('id')
@@ -56,11 +51,10 @@ export default function SearchPage() {
         .single()
 
       if (existing) {
-        setError('You already have a connection with this sailor!')
+        setError('Already connected!')
         return
       }
 
-      // Create friend request
       const { error } = await supabase
         .from('friendships')
         .insert({
@@ -73,97 +67,92 @@ export default function SearchPage() {
 
       setSentRequests((prev) => new Set(prev).add(userId))
     } catch {
-      setError('Arrr, something went wrong!')
+      setError('Something went wrong!')
     }
-  }
-
-  const copyInviteLink = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
-
-    const { data: profile } = await supabase
-      .from('users')
-      .select('username')
-      .eq('id', user.id)
-      .single()
-
-    const link = `${window.location.origin}/search?invite=${profile?.username}`
-    await navigator.clipboard.writeText(link)
-    alert('Invite link copied! Share it with your friends.')
   }
 
   return (
     <div className="p-4">
-      <div className="flex items-center gap-2 mb-6">
-        <div className="w-6 h-6 text-amber-600">
-          <svg viewBox="0 0 24 24" fill="currentColor">
-            <path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
-          </svg>
-        </div>
-        <h2 className="text-sm font-semibold text-amber-700 uppercase tracking-wide">
-          Find Sailors
-        </h2>
+      {/* Search input */}
+      <div className="flex gap-2 mb-4">
+        <input
+          type="text"
+          placeholder="Search username..."
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+          className="flex-1 px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-purple-500"
+          style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}
+        />
+        <button
+          onClick={handleSearch}
+          disabled={isSearching}
+          className="px-6 py-3 bg-purple-500 hover:bg-purple-600 text-white font-bold uppercase rounded-lg disabled:opacity-50"
+          style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}
+        >
+          {isSearching ? '...' : 'Go'}
+        </button>
       </div>
 
-      <Card variant="parchment" className="mb-4">
-        <CardContent className="pt-4">
-          <div className="flex gap-2">
-            <Input
-              placeholder="Search by username..."
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-            />
-            <Button onClick={handleSearch} isLoading={isSearching}>
-              Search
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Button
-        variant="ghost"
-        className="w-full mb-4 text-sky-700"
-        onClick={copyInviteLink}
-      >
-        <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
-        </svg>
-        Copy invite link
-      </Button>
-
       {error && (
-        <div className="p-3 mb-4 rounded-lg bg-red-100 border border-red-300 text-red-700 text-sm">
+        <div className="p-3 mb-4 rounded-lg bg-red-900/50 border border-red-700 text-red-300 text-sm"
+             style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}>
           {error}
         </div>
       )}
 
-      <div className="space-y-3">
-        {results.map((user) => (
-          <div
-            key={user.id}
-            className="flex items-center gap-3 p-3 bg-white rounded-xl border-2 border-amber-200"
-          >
-            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-teal-500 to-teal-600 flex items-center justify-center text-white font-bold uppercase">
-              {user.username.charAt(0)}
-            </div>
-            <div className="flex-1">
-              <p className="font-semibold text-amber-900">@{user.username}</p>
-            </div>
-            <Button
-              size="sm"
-              variant={sentRequests.has(user.id) ? 'ghost' : 'secondary'}
-              disabled={sentRequests.has(user.id)}
-              onClick={() => handleSendRequest(user.id)}
+      {/* Results */}
+      <div className="space-y-2">
+        {results.map((user, index) => {
+          const colors = [
+            'bg-purple-500',
+            'bg-blue-500',
+            'bg-green-500',
+            'bg-orange-500',
+            'bg-pink-500',
+            'bg-teal-500',
+          ]
+          const colorClass = colors[index % colors.length]
+          const isSent = sentRequests.has(user.id)
+
+          return (
+            <div
+              key={user.id}
+              className={`flex items-center justify-between p-4 ${colorClass} rounded-lg`}
             >
-              {sentRequests.has(user.id) ? 'Sent' : 'Add'}
-            </Button>
-          </div>
-        ))}
+              <span
+                className="text-white text-lg font-bold uppercase"
+                style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}
+              >
+                {user.username}
+              </span>
+              <button
+                onClick={() => handleSendRequest(user.id)}
+                disabled={isSent}
+                className={`px-4 py-2 rounded font-bold uppercase text-sm ${
+                  isSent
+                    ? 'bg-white/20 text-white/60 cursor-default'
+                    : 'bg-white text-gray-900 hover:bg-gray-100'
+                }`}
+                style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}
+              >
+                {isSent ? 'Sent' : 'Add'}
+              </button>
+            </div>
+          )
+        })}
 
         {results.length === 0 && query && !isSearching && (
-          <div className="text-center py-8 text-amber-600">
-            <p>That sailor couldn&apos;t be found</p>
+          <div className="text-center py-12 text-gray-500"
+               style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}>
+            No users found
+          </div>
+        )}
+
+        {!query && (
+          <div className="text-center py-12 text-gray-500"
+               style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}>
+            Search for users by username
           </div>
         )}
       </div>

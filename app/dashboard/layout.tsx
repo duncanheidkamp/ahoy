@@ -1,7 +1,6 @@
 import { ReactNode } from 'react'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { BottomNav, TopHeader } from '@/components/navigation'
 import { NotificationPrompt } from '@/components/notifications/notification-prompt'
 import { ServiceWorkerRegister } from '@/components/notifications/service-worker-register'
 
@@ -15,21 +14,10 @@ export default async function DashboardLayout({ children }: { children: ReactNod
     redirect('/login')
   }
 
-  // Get user profile
-  const { data: profile } = await supabase
-    .from('users')
-    .select('username')
-    .eq('id', user.id)
-    .single()
-
   return (
-    <div className="min-h-screen bg-gradient-to-b from-amber-50 to-orange-50 pb-20">
+    <div className="min-h-screen bg-gray-900">
       <ServiceWorkerRegister />
-      <TopHeader title="Ahoy" username={profile?.username} />
-      <main className="max-w-lg mx-auto">
-        {children}
-      </main>
-      <BottomNav />
+      {children}
       <NotificationPrompt />
     </div>
   )

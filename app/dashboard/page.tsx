@@ -9,6 +9,13 @@ export default async function DashboardPage() {
 
   if (!user) return null
 
+  // Get user profile
+  const { data: profile } = await supabase
+    .from('users')
+    .select('username')
+    .eq('id', user.id)
+    .single()
+
   // Get all accepted friendships
   const { data: friendships } = await supabase
     .from('friendships')
@@ -33,6 +40,7 @@ export default async function DashboardPage() {
     <FriendList
       initialFriends={friends || []}
       currentUserId={user.id}
+      username={profile?.username || ''}
     />
   )
 }
