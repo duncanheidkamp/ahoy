@@ -1,6 +1,10 @@
 // Firebase Cloud Messaging Service Worker
+console.log('[Firebase SW] Loading service worker...');
+
 importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-messaging-compat.js');
+
+console.log('[Firebase SW] Scripts loaded, initializing Firebase...');
 
 // Initialize Firebase in the service worker
 // Note: These values are safe to expose (they're public client-side keys)
@@ -12,7 +16,15 @@ firebase.initializeApp({
   appId: '1:607901672859:web:e0b580ec1ef91467bb2d3e',
 });
 
+console.log('[Firebase SW] Firebase initialized');
+
 const messaging = firebase.messaging();
+
+// Log any push event
+self.addEventListener('push', (event) => {
+  console.log('[Firebase SW] Push event received:', event);
+  console.log('[Firebase SW] Push data:', event.data?.text());
+});
 
 // Handle background messages
 messaging.onBackgroundMessage((payload) => {
