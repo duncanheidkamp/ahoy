@@ -9,7 +9,7 @@ export default function SearchPage() {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<UserWithAhoyCount[]>([])
   const [isSearching, setIsSearching] = useState(false)
-  const [sentRequests, setSentRequests] = useState<Map<string, 'pending' | 'accepted'>>(new Map())
+  const [addedFriends, setAddedFriends] = useState<Set<string>>(new Set())
   const [error, setError] = useState('')
   const supabase = createClient()
 
@@ -64,36 +64,47 @@ export default function SearchPage() {
     }
   }
 
-  const handleSendRequest = async (userId: string) => {
+  const handleAddFriend = async (userId: string) => {
     try {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
 
+      // Check for any existing friendship record (any status)
       const { data: existing } = await supabase
         .from('friendships')
         .select('id, status')
         .or(`and(requester_id.eq.${user.id},addressee_id.eq.${userId}),and(requester_id.eq.${userId},addressee_id.eq.${user.id})`)
-        .in('status', ['pending', 'accepted'])
         .single()
 
       if (existing) {
-        const status = (existing as { status?: string }).status
-        const statusMessage = status === 'accepted' ? 'Already friends!' : 'Request already sent'
-        setError(statusMessage)
+        const rec = existing as { id: string; status: string }
+        if (rec.status === 'accepted') {
+          // Already crew — just reflect that in UI silently
+          setAddedFriends((prev) => new Set(prev).add(userId))
+          return
+        }
+        // Upgrade any pending/declined record to accepted (instant add)
+        const { error } = await supabase
+          .from('friendships')
+          .update({ status: 'accepted' })
+          .eq('id', rec.id)
+        if (error) throw error
+        setAddedFriends((prev) => new Set(prev).add(userId))
         return
       }
 
+      // No existing record — insert as accepted immediately (no request flow)
       const { error } = await supabase
         .from('friendships')
         .insert({
           requester_id: user.id,
           addressee_id: userId,
-          status: 'pending',
+          status: 'accepted',
         })
 
       if (error) throw error
 
-      setSentRequests((prev) => new Map(prev).set(userId, 'pending'))
+      setAddedFriends((prev) => new Set(prev).add(userId))
     } catch {
       setError('Something went wrong!')
     }
@@ -141,10 +152,8 @@ export default function SearchPage() {
             'bg-teal-500',
           ]
           const colorClass = colors[index % colors.length]
-          const status = sentRequests.get(user.id)
-          const isRequested = status === 'pending'
-          const isFriend = status === 'accepted'
-          const isDisabled = isRequested || isFriend
+          const isAdded = addedFriends.has(user.id)
+          const isDisabled = isAdded
           const badge = getBadge(user.ahoyCount || 0)
 
           return (
@@ -167,7 +176,7 @@ export default function SearchPage() {
                 )}
               </div>
               <button
-                onClick={() => handleSendRequest(user.id)}
+                onClick={() => handleAddFriend(user.id)}
                 disabled={isDisabled}
                 className={`px-4 py-2 rounded font-bold uppercase text-sm ${
                   isDisabled
@@ -176,7 +185,7 @@ export default function SearchPage() {
                 }`}
                 style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}
               >
-                {isFriend ? 'Friends' : isRequested ? 'Sent' : 'Add'}
+                {isAdded ? 'In Crew' : 'Add'}
               </button>
             </div>
           )

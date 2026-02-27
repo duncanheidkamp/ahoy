@@ -197,7 +197,7 @@ export default function SettingsPage() {
           className="text-gray-500 text-sm"
           style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}
         >
-          <p>Ahoy! v0.2.0</p>
+          <p>Ahoy! v0.3.0</p>
           <p className="text-xs mt-1">Send an Ahoy to your crew with one tap.</p>
         </div>
       </div>
