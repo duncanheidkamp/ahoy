@@ -4,7 +4,7 @@ import { sendPushNotification } from '@/lib/firebase/admin'
 
 export async function POST(request: NextRequest) {
   try {
-    const { receiverId } = await request.json()
+    const { receiverId, phrase = 'Ahoy!' } = await request.json()
 
     if (!receiverId) {
       return NextResponse.json({ error: 'Receiver ID required' }, { status: 400 })
@@ -39,18 +39,15 @@ export async function POST(request: NextRequest) {
     await supabase.from('ahoys').insert({
       sender_id: user.id,
       receiver_id: receiverId,
-      phrase: 'Ahoy!',
+      phrase,
     })
 
     // Send push notification if receiver has FCM token
     if (receiver.fcm_token) {
-      console.log('Sending push notification to:', receiver.username)
-      console.log('FCM token (first 20 chars):', receiver.fcm_token.substring(0, 20) + '...')
-
       const pushResult = await sendPushNotification(
         receiver.fcm_token,
-        'Ahoy!',
-        `@${sender?.username} sent you an Ahoy!`,
+        phrase,
+        `@${sender?.username} sent you a${phrase === 'Ahoy!' ? 'n' : ''} ${phrase}`,
         {
           type: 'ahoy',
           senderId: user.id,

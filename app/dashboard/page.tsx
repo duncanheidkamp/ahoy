@@ -52,17 +52,39 @@ export default async function DashboardPage() {
     }
   }
 
+  // Get how many ahoys current user has sent to each specific friend
+  let myAhoysMap: Record<string, number> = {}
+  if (friendIds.length > 0) {
+    const { data: myAhoyData } = await supabase
+      .from('ahoys')
+      .select('receiver_id')
+      .eq('sender_id', user.id)
+      .in('receiver_id', friendIds)
+
+    if (myAhoyData) {
+      myAhoyData.forEach((a) => {
+        myAhoysMap[a.receiver_id] = (myAhoysMap[a.receiver_id] || 0) + 1
+      })
+    }
+  }
+
   // Attach ahoy counts to friends
   const friendsWithCounts: UserWithAhoyCount[] = (friends || []).map((f) => ({
     ...f,
     ahoyCount: ahoyCountMap[f.id] || 0,
+    myAhoysToThem: myAhoysMap[f.id] || 0,
   }))
+
+  // Get current user's own ahoy count (for header counter + phrase unlock)
+  const { data: userAhoyCount } = await supabase
+    .rpc('get_ahoy_count', { user_id: user.id })
 
   return (
     <FriendList
       initialFriends={friendsWithCounts}
       currentUserId={user.id}
       username={profile?.username || ''}
+      userAhoyCount={(userAhoyCount as number) || 0}
     />
   )
 }

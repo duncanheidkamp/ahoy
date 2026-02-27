@@ -12,13 +12,27 @@ interface FriendListProps {
   initialFriends: (User | UserWithAhoyCount)[]
   currentUserId: string
   username: string
+  userAhoyCount: number
 }
 
-export function FriendList({ initialFriends, currentUserId, username }: FriendListProps) {
+export function FriendList({ initialFriends, currentUserId, username, userAhoyCount }: FriendListProps) {
   const [friends, setFriends] = useState<(User | UserWithAhoyCount)[]>(initialFriends)
   const [menuOpen, setMenuOpen] = useState(false)
   const [ahoyReceived, setAhoyReceived] = useState<string | null>(null)
   const [copySuccess, setCopySuccess] = useState(false)
+
+  // Read phrase preference from localStorage (set via Settings toggle)
+  const [phrase, setPhrase] = useState('Ahoy!')
+  useEffect(() => {
+    const saved = localStorage.getItem('ahoy_phrase')
+    if (saved) setPhrase(saved)
+    // Listen for storage changes (if settings page updates it)
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'ahoy_phrase' && e.newValue) setPhrase(e.newValue)
+    }
+    window.addEventListener('storage', onStorage)
+    return () => window.removeEventListener('storage', onStorage)
+  }, [])
   const menuRef = useRef<HTMLDivElement>(null)
   const supabase = createClient()
   const router = useRouter()
@@ -119,7 +133,7 @@ export function FriendList({ initialFriends, currentUserId, username }: FriendLi
     const response = await fetch('/api/ahoys/send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ receiverId: friendId }),
+      body: JSON.stringify({ receiverId: friendId, phrase }),
     })
 
     if (!response.ok) {
@@ -184,6 +198,19 @@ export function FriendList({ initialFriends, currentUserId, username }: FriendLi
           >
             Crew Manifest
           </h1>
+
+          {/* Anchor ahoy counter */}
+          <div className="flex items-center gap-1 px-3 py-1 bg-gray-700 rounded-full">
+            <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4 text-amber-400">
+              <path d="M12 2C10.9 2 10 2.9 10 4C10 4.74 10.4 5.39 11 5.73V7H6C5.45 7 5 7.45 5 8V9H7V8H11V11H8C7.45 11 7 11.45 7 12V13H9V12H11V20.27C9.68 19.85 8.54 19 7.68 17.88C7.23 17.32 6.45 17.23 5.89 17.68C5.33 18.13 5.24 18.91 5.69 19.47C7.03 21.17 8.89 22.35 11 22.8V23H13V22.8C15.11 22.35 16.97 21.17 18.31 19.47C18.76 18.91 18.67 18.13 18.11 17.68C17.55 17.23 16.77 17.32 16.32 17.88C15.46 19 14.32 19.85 13 20.27V12H15V13H17V12C17 11.45 16.55 11 16 11H13V8H17V9H19V8C19 7.45 18.55 7 18 7H13V5.73C13.6 5.39 14 4.74 14 4C14 2.9 13.1 2 12 2Z"/>
+            </svg>
+            <span
+              className="text-amber-400 text-sm font-bold"
+              style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}
+            >
+              {userAhoyCount}
+            </span>
+          </div>
 
           {/* Ship menu button */}
           <div className="relative" ref={menuRef}>
@@ -307,6 +334,7 @@ export function FriendList({ initialFriends, currentUserId, username }: FriendLi
                 friend={friend}
                 onAhoy={handleAhoy}
                 index={index}
+                phrase={phrase}
               />
             ))}
           </div>

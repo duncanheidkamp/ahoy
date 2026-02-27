@@ -145,5 +145,6 @@ export interface FriendRequest extends Friendship {
 }
 
 export interface UserWithAhoyCount extends User {
-  ahoyCount?: number
+  ahoyCount?: number       // total ahoys this user has sent (for badges)
+  myAhoysToThem?: number   // how many times the current user has sent to this friend
 }

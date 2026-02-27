@@ -11,8 +11,24 @@ export default function SettingsPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [removingId, setRemovingId] = useState<string | null>(null)
   const [ahoyCount, setAhoyCount] = useState<number>(0)
+  const [arrrgEnabled, setArrrgEnabled] = useState(false)
   const router = useRouter()
   const supabase = createClient()
+
+  // Load phrase preference from localStorage on mount
+  useEffect(() => {
+    const saved = localStorage.getItem('ahoy_phrase')
+    setArrrgEnabled(saved === 'Arrrggggg Matey!')
+  }, [])
+
+  const handleToggleArrrg = () => {
+    const next = !arrrgEnabled
+    setArrrgEnabled(next)
+    const phrase = next ? 'Arrrggggg Matey!' : 'Ahoy!'
+    localStorage.setItem('ahoy_phrase', phrase)
+    // Notify other tabs/components
+    window.dispatchEvent(new StorageEvent('storage', { key: 'ahoy_phrase', newValue: phrase }))
+  }
 
   useEffect(() => {
     loadFriends()
@@ -111,6 +127,53 @@ export default function SettingsPage() {
         </div>
       </div>
 
+      {/* Arrrggggg Matey unlock toggle */}
+      <div className="mb-8">
+        <h2
+          className="text-gray-400 text-sm font-bold uppercase tracking-wide mb-4"
+          style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}
+        >
+          Phrase
+        </h2>
+        <div className={`rounded-lg p-4 border ${ahoyCount >= 500 ? 'bg-gray-800 border-amber-600' : 'bg-gray-800/50 border-gray-700 opacity-60'}`}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">{ahoyCount >= 500 ? '☠️' : '🔒'}</span>
+              <div>
+                <p
+                  className="text-white font-bold uppercase"
+                  style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}
+                >
+                  Arrrggggg Matey!
+                </p>
+                <p
+                  className="text-gray-400 text-xs mt-0.5"
+                  style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}
+                >
+                  {ahoyCount >= 500
+                    ? 'Unlocked at 500 ahoys ⚓'
+                    : `${500 - ahoyCount} more ahoys to unlock`}
+                </p>
+              </div>
+            </div>
+            {/* Toggle switch */}
+            <button
+              onClick={ahoyCount >= 500 ? handleToggleArrrg : undefined}
+              disabled={ahoyCount < 500}
+              className={`relative w-12 h-6 rounded-full transition-colors duration-200 ${
+                arrrgEnabled ? 'bg-amber-500' : 'bg-gray-600'
+              } disabled:cursor-not-allowed`}
+            >
+              <span
+                className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200 ${
+                  arrrgEnabled ? 'translate-x-6' : 'translate-x-0'
+                }`}
+              />
+            </button>
+          </div>
+        </div>
+      </div>
+
       {/* Manage Crew Section */}
       <div className="mb-8">
         <h2
@@ -197,7 +260,7 @@ export default function SettingsPage() {
           className="text-gray-500 text-sm"
           style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}
         >
-          <p>Ahoy! v0.3.0</p>
+          <p>Ahoy! v0.4.0</p>
           <p className="text-xs mt-1">Send an Ahoy to your crew with one tap.</p>
         </div>
       </div>
