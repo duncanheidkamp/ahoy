@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { requestNotificationPermission } from '@/lib/firebase/notifications'
+import { createClient } from '@/lib/supabase/client'
 
 export function NotificationPrompt() {
   const [showPrompt, setShowPrompt] = useState(false)
@@ -38,13 +39,42 @@ export function NotificationPrompt() {
       }
 
       const permission = Notification.permission
-      const dismissed = localStorage.getItem('notificationPromptDismissed')
 
-      if (permission === 'default' && !dismissed) {
+      // If permission is denied, nothing we can do
+      if (permission === 'denied') return
+
+      // If permission is default (not yet asked), check dismissed flag as usual
+      if (permission === 'default') {
+        const dismissed = localStorage.getItem('notificationPromptDismissed')
+        if (dismissed) {
+          // But override the dismissed gate if user has no FCM token in Supabase —
+          // they tapped "Not now" before and never got a token registered
+          try {
+            const supabase = createClient()
+            const { data: { user } } = await supabase.auth.getUser()
+            if (user) {
+              const { data: profile } = await supabase
+                .from('users')
+                .select('fcm_token')
+                .eq('id', user.id)
+                .single()
+              if (profile?.fcm_token) {
+                // Token exists, respect the dismissed flag
+                return
+              }
+              // No token — clear dismissed and re-prompt
+              console.log('User has no FCM token despite dismissing prompt — re-prompting')
+              localStorage.removeItem('notificationPromptDismissed')
+            }
+          } catch (e) {
+            console.error('Error checking FCM token status:', e)
+            return
+          }
+        }
+
         if ('serviceWorker' in navigator) {
           try {
             await navigator.serviceWorker.ready
-            console.log('Service worker ready, showing notification prompt')
           } catch (e) {
             console.error('Service worker not ready:', e)
           }
