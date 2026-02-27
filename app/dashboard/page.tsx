@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { FriendList } from '@/components/friends/friend-list'
+import type { UserWithAhoyCount } from '@/lib/supabase/types'
 
 export const dynamic = 'force-dynamic'
 
@@ -36,9 +37,30 @@ export default async function DashboardPage() {
         .in('id', friendIds)
     : { data: [] }
 
+  // Get ahoy counts for all friends
+  let ahoyCountMap: Record<string, number> = {}
+  if (friendIds.length > 0) {
+    const { data: ahoyData } = await supabase
+      .from('ahoys')
+      .select('sender_id')
+      .in('sender_id', friendIds)
+
+    if (ahoyData) {
+      ahoyData.forEach((a) => {
+        ahoyCountMap[a.sender_id] = (ahoyCountMap[a.sender_id] || 0) + 1
+      })
+    }
+  }
+
+  // Attach ahoy counts to friends
+  const friendsWithCounts: UserWithAhoyCount[] = (friends || []).map((f) => ({
+    ...f,
+    ahoyCount: ahoyCountMap[f.id] || 0,
+  }))
+
   return (
     <FriendList
-      initialFriends={friends || []}
+      initialFriends={friendsWithCounts}
       currentUserId={user.id}
       username={profile?.username || ''}
     />

@@ -143,3 +143,7 @@ export interface FriendRequest extends Friendship {
   requester: User
   addressee: User
 }
+
+export interface UserWithAhoyCount extends User {
+  ahoyCount?: number
+}

@@ -2,7 +2,8 @@
 
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
-import type { User } from '@/lib/supabase/types'
+import { getBadge } from '@/lib/utils'
+import type { User, UserWithAhoyCount } from '@/lib/supabase/types'
 
 // Yo-inspired color palette
 const COLORS = [
@@ -17,7 +18,7 @@ const COLORS = [
 ]
 
 interface FriendCardProps {
-  friend: User
+  friend: User | UserWithAhoyCount
   onAhoy: (friendId: string) => Promise<void>
   index: number
 }
@@ -51,6 +52,10 @@ export function FriendCard({ friend, onAhoy, index }: FriendCardProps) {
   // Remove @ symbol and capitalize first letter
   const displayName = friend.username.charAt(0).toUpperCase() + friend.username.slice(1)
 
+  // Get badge if user has ahoy count
+  const ahoyCount = 'ahoyCount' in friend ? friend.ahoyCount : undefined
+  const badge = ahoyCount !== undefined ? getBadge(ahoyCount) : null
+
   return (
     <button
       onClick={handleAhoy}
@@ -59,7 +64,7 @@ export function FriendCard({ friend, onAhoy, index }: FriendCardProps) {
         'w-full py-6 px-4',
         'text-white text-2xl font-bold uppercase tracking-wider',
         'transition-all duration-150',
-        'flex items-center justify-center',
+        'flex items-center justify-center gap-3',
         'select-none',
         colorClass,
         isSending && 'cursor-default'
@@ -74,6 +79,17 @@ export function FriendCard({ friend, onAhoy, index }: FriendCardProps) {
       >
         {showAhoy ? 'AHOY!' : displayName}
       </span>
+      {badge && (
+        <div className={cn(
+          'px-2 py-1 rounded-full text-sm font-bold',
+          'flex items-center gap-1',
+          'text-white',
+          badge.color
+        )}>
+          <span>{badge.icon}</span>
+          <span className="text-xs hidden sm:inline">{badge.label}</span>
+        </div>
+      )}
     </button>
   )
 }

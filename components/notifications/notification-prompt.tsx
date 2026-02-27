@@ -7,6 +7,30 @@ export function NotificationPrompt() {
   const [showPrompt, setShowPrompt] = useState(false)
   const [isRequesting, setIsRequesting] = useState(false)
 
+  // Silently request token if permission already granted
+  useEffect(() => {
+    const handleAlreadyGranted = async () => {
+      if (typeof window === 'undefined' || !('Notification' in window)) {
+        return
+      }
+
+      const permission = Notification.permission
+
+      if (permission === 'granted') {
+        console.log('Notification permission already granted, requesting token silently')
+        try {
+          await requestNotificationPermission()
+          console.log('Token silently refreshed and saved')
+        } catch (error) {
+          console.error('Failed to silently request notification token:', error)
+        }
+      }
+    }
+
+    const timer = setTimeout(handleAlreadyGranted, 500)
+    return () => clearTimeout(timer)
+  }, [])
+
   useEffect(() => {
     const checkAndShowPrompt = async () => {
       if (typeof window === 'undefined' || !('Notification' in window)) {

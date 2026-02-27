@@ -2,13 +2,14 @@
 
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import type { User } from '@/lib/supabase/types'
+import { getBadge } from '@/lib/utils'
+import type { User, UserWithAhoyCount } from '@/lib/supabase/types'
 
 export default function SearchPage() {
   const [query, setQuery] = useState('')
-  const [results, setResults] = useState<User[]>([])
+  const [results, setResults] = useState<UserWithAhoyCount[]>([])
   const [isSearching, setIsSearching] = useState(false)
-  const [sentRequests, setSentRequests] = useState<Set<string>>(new Set())
+  const [sentRequests, setSentRequests] = useState<Map<string, 'pending' | 'accepted'>>(new Map())
   const [error, setError] = useState('')
   const supabase = createClient()
 
@@ -31,7 +32,31 @@ export default function SearchPage() {
 
       if (error) throw error
 
-      setResults(data || [])
+      // Get ahoy counts for all search results
+      if (data && data.length > 0) {
+        const userIds = data.map(u => u.id)
+        const { data: ahoyData } = await supabase
+          .from('ahoys')
+          .select('sender_id')
+          .in('sender_id', userIds)
+
+        // Build count map
+        const countMap: Record<string, number> = {}
+        if (ahoyData) {
+          ahoyData.forEach(a => {
+            countMap[a.sender_id] = (countMap[a.sender_id] || 0) + 1
+          })
+        }
+
+        // Attach ahoy counts to results
+        const resultsWithCounts: UserWithAhoyCount[] = data.map(u => ({
+          ...u,
+          ahoyCount: countMap[u.id] || 0,
+        }))
+        setResults(resultsWithCounts)
+      } else {
+        setResults([])
+      }
     } catch {
       setError('Search failed - check your connection')
     } finally {
@@ -46,12 +71,15 @@ export default function SearchPage() {
 
       const { data: existing } = await supabase
         .from('friendships')
-        .select('id')
+        .select('id, status')
         .or(`and(requester_id.eq.${user.id},addressee_id.eq.${userId}),and(requester_id.eq.${userId},addressee_id.eq.${user.id})`)
+        .in('status', ['pending', 'accepted'])
         .single()
 
       if (existing) {
-        setError('Already connected!')
+        const status = (existing as { status?: string }).status
+        const statusMessage = status === 'accepted' ? 'Already friends!' : 'Request already sent'
+        setError(statusMessage)
         return
       }
 
@@ -65,7 +93,7 @@ export default function SearchPage() {
 
       if (error) throw error
 
-      setSentRequests((prev) => new Set(prev).add(userId))
+      setSentRequests((prev) => new Map(prev).set(userId, 'pending'))
     } catch {
       setError('Something went wrong!')
     }
@@ -113,30 +141,42 @@ export default function SearchPage() {
             'bg-teal-500',
           ]
           const colorClass = colors[index % colors.length]
-          const isSent = sentRequests.has(user.id)
+          const status = sentRequests.get(user.id)
+          const isRequested = status === 'pending'
+          const isFriend = status === 'accepted'
+          const isDisabled = isRequested || isFriend
+          const badge = getBadge(user.ahoyCount || 0)
 
           return (
             <div
               key={user.id}
               className={`flex items-center justify-between p-4 ${colorClass} rounded-lg`}
             >
-              <span
-                className="text-white text-lg font-bold uppercase"
-                style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}
-              >
-                {user.username}
-              </span>
+              <div className="flex items-center gap-2">
+                <span
+                  className="text-white text-lg font-bold uppercase"
+                  style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}
+                >
+                  {user.username}
+                </span>
+                {badge && (
+                  <div className={`px-2 py-1 rounded-full text-sm font-bold flex items-center gap-1 text-white ${badge.color}`}>
+                    <span>{badge.icon}</span>
+                    <span className="text-xs hidden sm:inline">{badge.label}</span>
+                  </div>
+                )}
+              </div>
               <button
                 onClick={() => handleSendRequest(user.id)}
-                disabled={isSent}
+                disabled={isDisabled}
                 className={`px-4 py-2 rounded font-bold uppercase text-sm ${
-                  isSent
+                  isDisabled
                     ? 'bg-white/20 text-white/60 cursor-default'
                     : 'bg-white text-gray-900 hover:bg-gray-100'
                 }`}
                 style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}
               >
-                {isSent ? 'Sent' : 'Add'}
+                {isFriend ? 'Friends' : isRequested ? 'Sent' : 'Add'}
               </button>
             </div>
           )

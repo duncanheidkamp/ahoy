@@ -6,16 +6,16 @@ import { createClient } from '@/lib/supabase/client'
 import { FriendCard } from './friend-card'
 import { setupMessageListener } from '@/lib/firebase/notifications'
 import { playShipBell, unlockAudio } from '@/lib/sounds/ship-bell'
-import type { User } from '@/lib/supabase/types'
+import type { User, UserWithAhoyCount } from '@/lib/supabase/types'
 
 interface FriendListProps {
-  initialFriends: User[]
+  initialFriends: (User | UserWithAhoyCount)[]
   currentUserId: string
   username: string
 }
 
 export function FriendList({ initialFriends, currentUserId, username }: FriendListProps) {
-  const [friends, setFriends] = useState<User[]>(initialFriends)
+  const [friends, setFriends] = useState<(User | UserWithAhoyCount)[]>(initialFriends)
   const [menuOpen, setMenuOpen] = useState(false)
   const [ahoyReceived, setAhoyReceived] = useState<string | null>(null)
   const [copySuccess, setCopySuccess] = useState(false)
@@ -116,23 +116,15 @@ export function FriendList({ initialFriends, currentUserId, username }: FriendLi
   }
 
   const handleAhoy = async (friendId: string) => {
-    const { error: ahoyError } = await supabase
-      .from('ahoys')
-      .insert({
-        sender_id: currentUserId,
-        receiver_id: friendId,
-        phrase: 'Ahoy!',
-      })
-
-    if (ahoyError) {
-      throw ahoyError
-    }
-
-    await fetch('/api/ahoys/send', {
+    const response = await fetch('/api/ahoys/send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ receiverId: friendId }),
     })
+
+    if (!response.ok) {
+      throw new Error('Failed to send ahoy')
+    }
   }
 
   const handleShare = async () => {

@@ -37,3 +37,25 @@ export function validateUsername(username: string): { valid: boolean; error?: st
 
   return { valid: true }
 }
+
+export interface BadgeInfo {
+  label: string
+  icon: string
+  color: string
+}
+
+export function getBadge(count: number): BadgeInfo | null {
+  if (count >= 10000) {
+    return { label: 'Admiral', icon: '⚓', color: 'bg-yellow-500' }
+  }
+  if (count >= 1000) {
+    return { label: 'Captain', icon: '🛞', color: 'bg-amber-600' }
+  }
+  if (count >= 500) {
+    return { label: 'First Mate', icon: '🧭', color: 'bg-sky-600' }
+  }
+  if (count >= 100) {
+    return { label: 'Sailor', icon: '⚓', color: 'bg-teal-600' }
+  }
+  return null
+}
