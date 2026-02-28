@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { NotificationPrompt } from '@/components/notifications/notification-prompt'
 import { ServiceWorkerRegister } from '@/components/notifications/service-worker-register'
 import { VersionSplash } from '@/components/splash/version-splash'
+import { PwaInstallPrompt } from '@/components/splash/pwa-install-prompt'
 
 export const dynamic = 'force-dynamic'
 
@@ -21,6 +22,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
       {children}
       <NotificationPrompt />
       <VersionSplash />
+      <PwaInstallPrompt />
     </div>
   )
 }
