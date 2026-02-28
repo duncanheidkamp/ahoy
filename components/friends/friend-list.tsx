@@ -33,6 +33,21 @@ export function FriendList({ initialFriends, currentUserId, username, userAhoyCo
     window.addEventListener('storage', onStorage)
     return () => window.removeEventListener('storage', onStorage)
   }, [])
+
+  // Secret: 1,000 ahoys unlocks "Yo!" — the original
+  const [showYoUnlock, setShowYoUnlock] = useState(false)
+  useEffect(() => {
+    if (userAhoyCount >= 1000 && !localStorage.getItem('ahoy_yo_unlocked')) {
+      localStorage.setItem('ahoy_yo_unlocked', 'true')
+      localStorage.setItem('ahoy_phrase', 'Yo!')
+      setPhrase('Yo!')
+      window.dispatchEvent(new StorageEvent('storage', { key: 'ahoy_phrase', newValue: 'Yo!' }))
+      setTimeout(() => {
+        setShowYoUnlock(true)
+        setTimeout(() => setShowYoUnlock(false), 3500)
+      }, 800)
+    }
+  }, [userAhoyCount])
   const menuRef = useRef<HTMLDivElement>(null)
   const supabase = createClient()
   const router = useRouter()
@@ -169,6 +184,26 @@ export function FriendList({ initialFriends, currentUserId, username, userAhoyCo
 
   return (
     <div className="min-h-screen bg-gray-900 flex flex-col">
+      {/* Secret Yo! unlock overlay */}
+      {showYoUnlock && (
+        <div
+          className="fixed inset-0 z-[100] bg-black flex flex-col items-center justify-center cursor-pointer"
+          onClick={() => setShowYoUnlock(false)}
+        >
+          <div
+            className="text-white font-black text-center select-none"
+            style={{
+              fontFamily: 'Arial Black, Arial, sans-serif',
+              fontSize: 'clamp(6rem, 30vw, 16rem)',
+              lineHeight: 1,
+              letterSpacing: '-0.04em',
+            }}
+          >
+            Yo!
+          </div>
+        </div>
+      )}
+
       {/* Ahoy received toast */}
       {ahoyReceived && (
         <div className="fixed top-20 left-4 right-4 z-50 animate-pulse">
