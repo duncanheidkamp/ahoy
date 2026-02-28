@@ -106,6 +106,37 @@ export interface Database {
           }
         ]
       }
+      feedback: {
+        Row: {
+          id: string
+          user_id: string
+          version: string
+          message: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          version: string
+          message: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          version?: string
+          message?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'feedback_user_id_fkey'
+            columns: ['user_id']
+            referencedRelation: 'users'
+            referencedColumns: ['id']
+          }
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -148,3 +179,5 @@ export interface UserWithAhoyCount extends User {
   ahoyCount?: number       // total ahoys this user has sent (for badges)
   myAhoysToThem?: number   // how many times the current user has sent to this friend
 }
+
+export type Feedback = Database['public']['Tables']['feedback']['Row']
