@@ -45,3 +45,7 @@ example
 
 # ...but keep the template (the repo root ignores .env*)
 !.env.example
+
+# Firebase client config for Android push (see README "Push notifications")
+google-services.json
+GoogleService-Info.plist
