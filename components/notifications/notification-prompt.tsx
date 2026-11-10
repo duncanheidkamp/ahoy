@@ -53,12 +53,9 @@ export function NotificationPrompt() {
             const supabase = createClient()
             const { data: { user } } = await supabase.auth.getUser()
             if (user) {
-              const { data: profile } = await supabase
-                .from('users')
-                .select('fcm_token')
-                .eq('id', user.id)
-                .single()
-              if (profile?.fcm_token) {
+              // fcm_token isn't readable directly; get_my_profile exposes a flag.
+              const { data: profile } = await supabase.rpc('get_my_profile').maybeSingle()
+              if (profile?.has_fcm_token) {
                 // Token exists, respect the dismissed flag
                 return
               }

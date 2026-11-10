@@ -32,13 +32,10 @@ export default function SignupPage() {
   }
 
   const checkUsernameAvailability = async (username: string): Promise<boolean> => {
-    const { data } = await supabase
-      .from('users')
-      .select('username')
-      .eq('username', username)
-      .single()
-
-    return !data
+    // anon can't read the users table; this RPC only answers yes/no.
+    const { data, error } = await supabase.rpc('username_available', { p_username: username })
+    if (error) throw error
+    return data === true
   }
 
   const handleSignup = async (e: React.FormEvent) => {
@@ -64,33 +61,25 @@ export default function SignupPage() {
       }
 
       // Sign up with Supabase Auth
+      // The profile row is created by a database trigger from options.data.
+      // An invalid or taken username makes the whole signup fail.
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
         password,
+        options: { data: { username } },
       })
 
       if (authError) {
-        setError(authError.message)
+        // The trigger's error surfaces as a generic "Database error saving new user".
+        if (/database error/i.test(authError.message)) {
+          setUsernameError('That username is already taken, matey!')
+        } else {
+          setError(authError.message)
+        }
         return
       }
 
       if (authData.user) {
-        // Create user profile via API (uses service role to bypass RLS)
-        const profileResponse = await fetch('/api/users/create-profile', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            userId: authData.user.id,
-            username: username,
-          }),
-        })
-
-        if (!profileResponse.ok) {
-          const { error } = await profileResponse.json()
-          setError(error || 'Failed to create profile. Please try again.')
-          return
-        }
-
         router.push('/dashboard')
         router.refresh()
       }

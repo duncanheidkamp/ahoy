@@ -3,13 +3,15 @@
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { getBadge } from '@/lib/utils'
-import type { User, UserWithAhoyCount } from '@/lib/supabase/types'
+import type { UserWithAhoyCount } from '@/lib/supabase/types'
+
+type AddState = 'requested' | 'crew'
 
 export default function SearchPage() {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<UserWithAhoyCount[]>([])
   const [isSearching, setIsSearching] = useState(false)
-  const [addedFriends, setAddedFriends] = useState<Set<string>>(new Set())
+  const [addState, setAddState] = useState<Record<string, AddState>>({})
   const [error, setError] = useState('')
   const supabase = createClient()
 
@@ -23,40 +25,21 @@ export default function SearchPage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
 
-      const { data, error } = await supabase
-        .from('users')
-        .select('*')
-        .ilike('username', `%${query.toLowerCase()}%`)
-        .neq('id', user.id)
-        .limit(20)
+      // search_users returns only public columns plus each user's lifetime
+      // sent count (SQL count(*), not capped by RLS or the 1000-row limit),
+      // and hides anyone with a block in either direction.
+      const { data, error } = await supabase.rpc('search_users', { p_query: query })
 
       if (error) throw error
 
-      // Get ahoy counts for all search results
-      if (data && data.length > 0) {
-        const userIds = data.map(u => u.id)
-        const { data: ahoyData } = await supabase
-          .from('ahoys')
-          .select('sender_id')
-          .in('sender_id', userIds)
-
-        // Build count map
-        const countMap: Record<string, number> = {}
-        if (ahoyData) {
-          ahoyData.forEach(a => {
-            countMap[a.sender_id] = (countMap[a.sender_id] || 0) + 1
-          })
-        }
-
-        // Attach ahoy counts to results
-        const resultsWithCounts: UserWithAhoyCount[] = data.map(u => ({
-          ...u,
-          ahoyCount: countMap[u.id] || 0,
+      setResults(
+        (data ?? []).map((u) => ({
+          id: u.id,
+          username: u.username,
+          created_at: '',
+          ahoyCount: u.total_sent,
         }))
-        setResults(resultsWithCounts)
-      } else {
-        setResults([])
-      }
+      )
     } catch {
       setError('Search failed - check your connection')
     } finally {
@@ -64,47 +47,57 @@ export default function SearchPage() {
     }
   }
 
+  const markAdded = (userId: string, state: AddState) =>
+    setAddState((prev) => ({ ...prev, [userId]: state }))
+
+  // Sends a pending friend request. The database only allows the requester to
+  // create 'pending' rows and only the addressee to accept, so:
+  //   - no existing row            -> insert pending           -> "Requested"
+  //   - they already asked me      -> accept their request     -> "In Crew"
+  //   - I asked (pending/declined) -> nothing to do            -> "Requested"
+  //   - already accepted           -> nothing to do            -> "In Crew"
   const handleAddFriend = async (userId: string) => {
     try {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
 
-      // Check for any existing friendship record (any status)
       const { data: existing } = await supabase
         .from('friendships')
-        .select('id, status')
+        .select('id, status, requester_id')
         .or(`and(requester_id.eq.${user.id},addressee_id.eq.${userId}),and(requester_id.eq.${userId},addressee_id.eq.${user.id})`)
-        .single()
+        .maybeSingle()
 
       if (existing) {
-        const rec = existing as { id: string; status: string }
-        if (rec.status === 'accepted') {
-          // Already crew — just reflect that in UI silently
-          setAddedFriends((prev) => new Set(prev).add(userId))
+        if (existing.status === 'accepted') {
+          markAdded(userId, 'crew')
           return
         }
-        // Upgrade any pending/declined record to accepted (instant add)
-        const { error } = await supabase
-          .from('friendships')
-          .update({ status: 'accepted' })
-          .eq('id', rec.id)
-        if (error) throw error
-        setAddedFriends((prev) => new Set(prev).add(userId))
+        if (existing.requester_id === userId) {
+          // They sent me a request (pending, or one I declined) — accept it.
+          const { error } = await supabase
+            .from('friendships')
+            .update({ status: 'accepted' })
+            .eq('id', existing.id)
+          if (error) throw error
+          markAdded(userId, 'crew')
+          return
+        }
+        // My own request is still out (or was declined — we don't say which).
+        markAdded(userId, 'requested')
         return
       }
 
-      // No existing record — insert as accepted immediately (no request flow)
       const { error } = await supabase
         .from('friendships')
         .insert({
           requester_id: user.id,
           addressee_id: userId,
-          status: 'accepted',
+          status: 'pending',
         })
 
       if (error) throw error
 
-      setAddedFriends((prev) => new Set(prev).add(userId))
+      markAdded(userId, 'requested')
     } catch {
       setError('Something went wrong!')
     }
@@ -152,8 +145,8 @@ export default function SearchPage() {
             'bg-teal-500',
           ]
           const colorClass = colors[index % colors.length]
-          const isAdded = addedFriends.has(user.id)
-          const isDisabled = isAdded
+          const state = addState[user.id]
+          const isDisabled = !!state
           const badge = getBadge(user.ahoyCount || 0)
 
           return (
@@ -185,7 +178,7 @@ export default function SearchPage() {
                 }`}
                 style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}
               >
-                {isAdded ? 'In Crew' : 'Add'}
+                {state === 'crew' ? 'In Crew' : state === 'requested' ? 'Requested' : 'Add'}
               </button>
             </div>
           )

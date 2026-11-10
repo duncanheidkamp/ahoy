@@ -27,13 +27,13 @@ export default function RequestsPage() {
 
       const { data: incomingData } = await supabase
         .from('friendships')
-        .select('*, requester:users!friendships_requester_id_fkey(*), addressee:users!friendships_addressee_id_fkey(*)')
+        .select('*, requester:users!friendships_requester_id_fkey(id, username, created_at), addressee:users!friendships_addressee_id_fkey(id, username, created_at)')
         .eq('addressee_id', user.id)
         .eq('status', 'pending')
 
       const { data: outgoingData } = await supabase
         .from('friendships')
-        .select('*, requester:users!friendships_requester_id_fkey(*), addressee:users!friendships_addressee_id_fkey(*)')
+        .select('*, requester:users!friendships_requester_id_fkey(id, username, created_at), addressee:users!friendships_addressee_id_fkey(id, username, created_at)')
         .eq('requester_id', user.id)
         .eq('status', 'pending')
 

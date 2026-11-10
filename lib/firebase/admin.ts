@@ -67,17 +67,24 @@ function getFirebaseAdmin() {
   return { app, messaging }
 }
 
+export type PushOutcome = 'sent' | 'unregistered' | 'error' | 'not_configured'
+
+const UNREGISTERED_CODES = new Set([
+  'messaging/registration-token-not-registered',
+  'messaging/invalid-registration-token',
+])
+
 export async function sendPushNotification(
   token: string,
   title: string,
   body: string,
   data?: Record<string, string>
-) {
+): Promise<PushOutcome> {
   const { messaging } = getFirebaseAdmin()
 
   if (!messaging) {
     console.warn('Firebase messaging not initialized')
-    return false
+    return 'not_configured'
   }
 
   try {
@@ -105,9 +112,11 @@ export async function sendPushNotification(
       data,
     })
     console.log('Push notification sent successfully, messageId:', messageId)
-    return true
+    return 'sent'
   } catch (error) {
+    const code = (error as { code?: string })?.code
+    if (code && UNREGISTERED_CODES.has(code)) return 'unregistered'
     console.error('Failed to send push notification:', error)
-    return false
+    return 'error'
   }
 }
