@@ -424,3 +424,17 @@ enabled = true
 # formatted with uppercase keywords, indent 2, max width 180, trailing commas,
 # and column/key alignment. Set to "null" to emit raw, unformatted SQL.
 # format_options = "{\"keywordCase\":\"upper\",\"indent\":2,\"maxWidth\":180,\"commaStyle\":\"trailing\"}"
+
+# Ahoy Edge Functions. verify_jwt makes the gateway reject requests without a
+# valid user JWT; each function also re-verifies the caller with auth.getUser().
+[functions.send-ahoy]
+enabled = true
+verify_jwt = true
+import_map = "./functions/send-ahoy/deno.json"
+entrypoint = "./functions/send-ahoy/index.ts"
+
+[functions.delete-account]
+enabled = true
+verify_jwt = true
+import_map = "./functions/delete-account/deno.json"
+entrypoint = "./functions/delete-account/index.ts"
