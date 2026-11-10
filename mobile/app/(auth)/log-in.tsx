@@ -36,8 +36,7 @@ export default function LogInScreen() {
       </Text>
       <Text style={styles.subtitle}>Log in to hail your crew</Text>
 
-      {/* PHASE 4: Sign in with Apple / Google buttons render here. */}
-      <SocialAuthSlot />
+      <SocialAuthSlot mode="log-in" />
 
       <TextField
         label="Email"

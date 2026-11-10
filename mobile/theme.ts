@@ -59,6 +59,11 @@ export const colors = {
   overlay: 'rgba(0,0,0,0.5)',
   countBadge: palette.red700,
   countBadgeText: palette.white,
+  /** Invite card on the add/<username> screen (white text, >= 4.5:1). */
+  cardBackground: palette.ocean900,
+  /** Full-screen "Yo!" reveal (the PWA's black screen, white text). */
+  revealBackground: palette.black,
+  revealText: palette.white,
 } as const
 
 /**

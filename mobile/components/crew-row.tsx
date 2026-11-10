@@ -12,10 +12,12 @@ interface Props {
   index: number
   phrase: string
   onToast: (message: string) => void
+  /** Long-press: Remove / Block / Report. */
+  onLongPress?: (member: CrewMember) => void
 }
 
 /** Full-width Yo-style row. Tap anywhere to send. */
-export const CrewRow = memo(function CrewRow({ member, index, phrase, onToast }: Props) {
+export const CrewRow = memo(function CrewRow({ member, index, phrase, onToast, onLongPress }: Props) {
   const { state, tap } = useAhoySender(member.id, phrase, onToast)
   const badge = getBadge(member.totalSent)
   const active = state.status !== 'idle'
@@ -23,12 +25,18 @@ export const CrewRow = memo(function CrewRow({ member, index, phrase, onToast }:
   return (
     <Pressable
       onPress={tap}
+      onLongPress={onLongPress ? () => onLongPress(member) : undefined}
+      delayLongPress={450}
       accessibilityRole="button"
       accessibilityLabel={`Send Ahoy to @${member.username}`}
       accessibilityHint={`You've sent ${member.sentByMe} ${member.sentByMe === 1 ? 'ahoy' : 'ahoys'}${
         badge ? `. ${badge.label}` : ''
       }`}
       accessibilityState={{ busy: state.status === 'sending' }}
+      accessibilityActions={onLongPress ? [{ name: 'longpress', label: 'More options' }] : undefined}
+      onAccessibilityAction={(e) => {
+        if (e.nativeEvent.actionName === 'longpress') onLongPress?.(member)
+      }}
       style={({ pressed }) => [styles.row, { backgroundColor: rowColor(index) }, pressed && styles.pressed]}
     >
       <Text style={styles.name} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>

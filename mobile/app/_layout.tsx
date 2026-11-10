@@ -10,8 +10,10 @@ import { InAppBannerHost } from '@/components/in-app-banner'
 import { ToastProvider } from '@/components/toast'
 import { Centered, MutedText } from '@/components/ui'
 import { AuthProvider, useAuth } from '@/lib/auth'
+import { authRoute } from '@/lib/auth-routing'
 import { isConfigured } from '@/lib/env'
 import { usePushForeground } from '@/lib/push/use-push'
+import { useProfile } from '@/lib/queries'
 import { colors, type } from '@/theme'
 
 SplashScreen.preventAutoHideAsync().catch(() => {})
@@ -26,21 +28,36 @@ focusManager.setEventListener((setFocused) => {
 
 function RootNavigator() {
   const { session, loading } = useAuth()
+  // Social-login accounts have no username until they pick one; the profile
+  // decides between the app and the one-time picker (lib/auth-routing.ts).
+  const profile = useProfile({ enabled: !!session })
+  const route = authRoute({
+    authLoading: loading,
+    hasSession: !!session,
+    profile: { data: profile.data, isPending: profile.isPending, isError: profile.isError },
+  })
 
   useEffect(() => {
-    if (!loading) SplashScreen.hideAsync().catch(() => {})
-  }, [loading])
+    if (route !== 'loading') SplashScreen.hideAsync().catch(() => {})
+  }, [route])
 
-  if (loading) return null
+  if (route === 'loading') return null
 
   return (
     <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }}>
-      <Stack.Protected guard={!!session}>
+      <Stack.Protected guard={route === 'app'}>
         <Stack.Screen name="(app)" />
       </Stack.Protected>
-      <Stack.Protected guard={!session}>
+      <Stack.Protected guard={route === 'pick-username'}>
+        <Stack.Screen name="(onboarding)" />
+      </Stack.Protected>
+      <Stack.Protected guard={route === 'auth'}>
         <Stack.Screen name="(auth)" />
       </Stack.Protected>
+      {/* Invite links (universal link / ahoy://add/<name>) in every state:
+          the screen itself remembers the link and sends you to log in or pick
+          a username first. */}
+      <Stack.Screen name="add/[username]" options={{ headerShown: true, title: 'Join the crew', presentation: 'modal' }} />
     </Stack>
   )
 }

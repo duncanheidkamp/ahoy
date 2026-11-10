@@ -12,6 +12,20 @@ const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL
 const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY
 const EAS_PROJECT_ID = process.env.EAS_PROJECT_ID
 
+// Invite-links domain (links/ static site). Same variable and default as
+// lib/env.ts. Drives iOS associated domains and the Android App Links intent
+// filter, so changing it needs a new native build.
+const LINKS_DOMAIN = (process.env.EXPO_PUBLIC_LINKS_DOMAIN ?? '').trim() || 'ahoy.example'
+
+// Google Sign-In (iOS) registers the reversed iOS client ID as a URL scheme:
+// 1234-abc.apps.googleusercontent.com -> com.googleusercontent.apps.1234-abc.
+// Without a client ID a placeholder keeps prebuild working; the app hides the
+// Google button until the EXPO_PUBLIC_GOOGLE_* ids are set (README).
+const GOOGLE_IOS_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ?? ''
+const GOOGLE_IOS_URL_SCHEME = GOOGLE_IOS_CLIENT_ID.endsWith('.apps.googleusercontent.com')
+  ? `com.googleusercontent.apps.${GOOGLE_IOS_CLIENT_ID.replace('.apps.googleusercontent.com', '')}`
+  : 'com.googleusercontent.apps.not-configured'
+
 // Android FCM client config. Never committed (gitignored). In EAS cloud builds
 // it comes from a *file* environment variable named GOOGLE_SERVICES_JSON
 // (`eas env:create --type file`), whose value is the path to the file on the
@@ -44,6 +58,10 @@ const appConfig = ({ config }: ConfigContext): ExpoConfig => ({
     bundleIdentifier: BUNDLE_ID,
     supportsTablet: false,
     icon: './assets/expo.icon',
+    // Sign in with Apple capability (com.apple.developer.applesignin).
+    usesAppleSignIn: true,
+    // Universal links for invites: https://<LINKS_DOMAIN>/add/<username>.
+    associatedDomains: [`applinks:${LINKS_DOMAIN}`],
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
     },
@@ -57,11 +75,23 @@ const appConfig = ({ config }: ConfigContext): ExpoConfig => ({
       monochromeImage: './assets/images/android-icon-monochrome.png',
     },
     predictiveBackGestureEnabled: false,
+    // Android App Links for invites; verified against
+    // https://<LINKS_DOMAIN>/.well-known/assetlinks.json.
+    intentFilters: [
+      {
+        action: 'VIEW',
+        autoVerify: true,
+        data: [{ scheme: 'https', host: LINKS_DOMAIN, pathPrefix: '/add/' }],
+        category: ['BROWSABLE', 'DEFAULT'],
+      },
+    ],
     ...(GOOGLE_SERVICES_FILE ? { googleServicesFile: GOOGLE_SERVICES_FILE } : {}),
   },
   plugins: [
     'expo-router',
     'expo-secure-store',
+    'expo-apple-authentication',
+    ['@react-native-google-signin/google-signin', { iosUrlScheme: GOOGLE_IOS_URL_SCHEME }],
     [
       'expo-splash-screen',
       {
@@ -103,6 +133,7 @@ const appConfig = ({ config }: ConfigContext): ExpoConfig => ({
   extra: {
     supabaseUrl: SUPABASE_URL ?? null,
     supabaseAnonKey: SUPABASE_ANON_KEY ?? null,
+    linksDomain: LINKS_DOMAIN,
     ...(EAS_PROJECT_ID ? { eas: { projectId: EAS_PROJECT_ID } } : {}),
   },
 })
