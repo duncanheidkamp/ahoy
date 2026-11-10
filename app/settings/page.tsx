@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import type { User } from '@/lib/supabase/types'
+import type { Phrase, User } from '@/lib/supabase/types'
 
 export default function SettingsPage() {
   const [isLoggingOut, setIsLoggingOut] = useState(false)
@@ -11,27 +11,32 @@ export default function SettingsPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [removingId, setRemovingId] = useState<string | null>(null)
   const [ahoyCount, setAhoyCount] = useState<number>(0)
-  const [arrrgEnabled, setArrrgEnabled] = useState(false)
+  const [phrases, setPhrases] = useState<Phrase[]>([])
+  const [phraseError, setPhraseError] = useState('')
   const router = useRouter()
   const supabase = createClient()
 
-  // Load phrase preference from localStorage on mount
-  useEffect(() => {
-    const saved = localStorage.getItem('ahoy_phrase')
-    setArrrgEnabled(saved === 'Arrrggggg Matey!')
-  }, [])
+  // Phrases live on the server; set_active_phrase() checks the unlock.
+  const loadPhrases = async () => {
+    const { data } = await supabase.rpc('get_my_phrases')
+    setPhrases(data ?? [])
+  }
 
-  const handleToggleArrrg = () => {
-    const next = !arrrgEnabled
-    setArrrgEnabled(next)
-    const phrase = next ? 'Arrrggggg Matey!' : 'Ahoy!'
-    localStorage.setItem('ahoy_phrase', phrase)
-    // Notify other tabs/components
-    window.dispatchEvent(new StorageEvent('storage', { key: 'ahoy_phrase', newValue: phrase }))
+  const handleSelectPhrase = async (phrase: Phrase) => {
+    if (!phrase.unlocked || phrase.active) return
+    setPhraseError('')
+    const previous = phrases
+    setPhrases((prev) => prev.map((p) => ({ ...p, active: p.id === phrase.id })))
+    const { error } = await supabase.rpc('set_active_phrase', { phrase_id: phrase.id })
+    if (error) {
+      setPhrases(previous)
+      setPhraseError('Could not change phrase')
+    }
   }
 
   useEffect(() => {
     loadFriends()
+    loadPhrases()
   }, [])
 
   const loadFriends = async () => {
@@ -41,7 +46,7 @@ export default function SettingsPage() {
       if (!user) return
 
       // Fetch ahoy count for current user
-      const { data: ahoyCountData } = await supabase.rpc('get_ahoy_count', { user_id: user.id })
+      const { data: ahoyCountData } = await supabase.rpc('my_sent_count')
       setAhoyCount(ahoyCountData || 0)
 
       const { data: friendships } = await supabase
@@ -61,7 +66,7 @@ export default function SettingsPage() {
 
       const { data: users } = await supabase
         .from('users')
-        .select('*')
+        .select('id, username, created_at')
         .in('id', friendIds)
 
       setFriends(users || [])
@@ -127,7 +132,7 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* Arrrggggg Matey unlock toggle */}
+      {/* Phrase picker (unlocks enforced server-side) */}
       <div className="mb-8">
         <h2
           className="text-gray-400 text-sm font-bold uppercase tracking-wide mb-4"
@@ -135,42 +140,53 @@ export default function SettingsPage() {
         >
           Phrase
         </h2>
-        <div className={`rounded-lg p-4 border ${ahoyCount >= 500 ? 'bg-gray-800 border-amber-600' : 'bg-gray-800/50 border-gray-700 opacity-60'}`}>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <span className="text-2xl">{ahoyCount >= 500 ? '☠️' : '🔒'}</span>
-              <div>
-                <p
-                  className="text-white font-bold uppercase"
-                  style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}
-                >
-                  Arrrggggg Matey!
-                </p>
-                <p
-                  className="text-gray-400 text-xs mt-0.5"
-                  style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}
-                >
-                  {ahoyCount >= 500
-                    ? 'Unlocked at 500 ahoys ⚓'
-                    : `${500 - ahoyCount} more ahoys to unlock`}
-                </p>
-              </div>
-            </div>
-            {/* Toggle switch */}
+        {phraseError && (
+          <div className="p-3 mb-2 rounded-lg bg-red-900/50 border border-red-700 text-red-300 text-sm">
+            {phraseError}
+          </div>
+        )}
+        <div className="space-y-2">
+          {phrases.map((phrase) => (
             <button
-              onClick={ahoyCount >= 500 ? handleToggleArrrg : undefined}
-              disabled={ahoyCount < 500}
-              className={`relative w-12 h-6 rounded-full transition-colors duration-200 ${
-                arrrgEnabled ? 'bg-amber-500' : 'bg-gray-600'
-              } disabled:cursor-not-allowed`}
+              key={phrase.id}
+              onClick={() => handleSelectPhrase(phrase)}
+              disabled={!phrase.unlocked}
+              className={`w-full text-left rounded-lg p-4 border flex items-center justify-between ${
+                phrase.active
+                  ? 'bg-gray-800 border-amber-500'
+                  : phrase.unlocked
+                    ? 'bg-gray-800 border-gray-700 hover:border-amber-600'
+                    : 'bg-gray-800/50 border-gray-700 opacity-60 cursor-not-allowed'
+              }`}
             >
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">{phrase.unlocked ? '☠️' : '🔒'}</span>
+                <div>
+                  <p
+                    className="text-white font-bold uppercase"
+                    style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}
+                  >
+                    {phrase.text}
+                  </p>
+                  <p
+                    className="text-gray-400 text-xs mt-0.5"
+                    style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}
+                  >
+                    {phrase.unlocked
+                      ? phrase.unlock_at > 0 ? `Unlocked at ${phrase.unlock_at} ahoys ⚓` : 'Always available'
+                      : phrase.secret
+                        ? 'Secret'
+                        : `${phrase.unlock_at - ahoyCount} more ahoys to unlock`}
+                  </p>
+                </div>
+              </div>
               <span
-                className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200 ${
-                  arrrgEnabled ? 'translate-x-6' : 'translate-x-0'
+                className={`w-5 h-5 rounded-full border-2 ${
+                  phrase.active ? 'bg-amber-500 border-amber-500' : 'border-gray-500'
                 }`}
               />
             </button>
-          </div>
+          ))}
         </div>
       </div>
 

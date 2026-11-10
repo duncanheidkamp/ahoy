@@ -6,47 +6,44 @@ import { createClient } from '@/lib/supabase/client'
 import { FriendCard } from './friend-card'
 import { setupMessageListener } from '@/lib/firebase/notifications'
 import { playShipBell, unlockAudio } from '@/lib/sounds/ship-bell'
-import type { User, UserWithAhoyCount } from '@/lib/supabase/types'
+import type { MyStats, User, UserWithAhoyCount } from '@/lib/supabase/types'
 
 interface FriendListProps {
   initialFriends: (User | UserWithAhoyCount)[]
   currentUserId: string
   username: string
   userAhoyCount: number
+  /** The sender's server-side active phrase (display only — the server decides what is sent). */
+  activePhrase: string
 }
 
-export function FriendList({ initialFriends, currentUserId, username, userAhoyCount }: FriendListProps) {
+// phrases.id of the secret 'Yo!' phrase (seeded in supabase/migrations/*_phrases.sql)
+const YO_PHRASE_ID = 3
+
+export function FriendList({ initialFriends, username, userAhoyCount, activePhrase }: FriendListProps) {
   const [friends, setFriends] = useState<(User | UserWithAhoyCount)[]>(initialFriends)
   const [menuOpen, setMenuOpen] = useState(false)
   const [ahoyReceived, setAhoyReceived] = useState<string | null>(null)
   const [copySuccess, setCopySuccess] = useState(false)
 
-  // Read phrase preference from localStorage (set via Settings toggle)
-  const [phrase, setPhrase] = useState('Ahoy!')
-  useEffect(() => {
-    const saved = localStorage.getItem('ahoy_phrase')
-    if (saved) setPhrase(saved)
-    // Listen for storage changes (if settings page updates it)
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === 'ahoy_phrase' && e.newValue) setPhrase(e.newValue)
-    }
-    window.addEventListener('storage', onStorage)
-    return () => window.removeEventListener('storage', onStorage)
-  }, [])
+  const [phrase, setPhrase] = useState(activePhrase)
 
-  // Secret: 1,000 ahoys unlocks "Yo!" — the original
+  // Secret: 1,000 ahoys unlocks "Yo!" — the original. The unlock itself is
+  // checked server-side by set_active_phrase(); localStorage only remembers
+  // that this device has already shown the reveal.
   const [showYoUnlock, setShowYoUnlock] = useState(false)
   useEffect(() => {
-    if (userAhoyCount >= 1000 && !localStorage.getItem('ahoy_yo_unlocked')) {
+    if (userAhoyCount < 1000 || localStorage.getItem('ahoy_yo_unlocked')) return
+    const supabase = createClient()
+    supabase.rpc('set_active_phrase', { phrase_id: YO_PHRASE_ID }).then(({ error }) => {
+      if (error) return
       localStorage.setItem('ahoy_yo_unlocked', 'true')
-      localStorage.setItem('ahoy_phrase', 'Yo!')
       setPhrase('Yo!')
-      window.dispatchEvent(new StorageEvent('storage', { key: 'ahoy_phrase', newValue: 'Yo!' }))
       setTimeout(() => {
         setShowYoUnlock(true)
         setTimeout(() => setShowYoUnlock(false), 3500)
       }, 800)
-    }
+    })
   }, [userAhoyCount])
   const menuRef = useRef<HTMLDivElement>(null)
   const supabase = createClient()
@@ -121,39 +118,36 @@ export function FriendList({ initialFriends, currentUserId, username, userAhoyCo
     }
   }, [])
 
-  const fetchFriends = async () => {
-    const { data: friendships } = await supabase
-      .from('friendships')
-      .select('requester_id, addressee_id')
-      .eq('status', 'accepted')
-      .or(`requester_id.eq.${currentUserId},addressee_id.eq.${currentUserId}`)
-
-    if (!friendships || friendships.length === 0) {
-      return { data: [] }
+  const fetchFriends = async (): Promise<{ data: UserWithAhoyCount[] }> => {
+    const [{ data: badges }, { data: stats }] = await Promise.all([
+      supabase.rpc('get_friend_badges'),
+      supabase.rpc('get_my_stats'),
+    ])
+    const perFriend = (stats as unknown as MyStats | null)?.per_friend ?? {}
+    return {
+      data: (badges ?? []).map((b) => ({
+        id: b.friend_id,
+        username: b.username,
+        created_at: '',
+        ahoyCount: b.total_sent,
+        myAhoysToThem: perFriend[b.friend_id] ?? 0,
+      })),
     }
-
-    const friendIds = friendships.map((f) =>
-      f.requester_id === currentUserId ? f.addressee_id : f.requester_id
-    )
-
-    const { data: users } = await supabase
-      .from('users')
-      .select('*')
-      .in('id', friendIds)
-
-    return { data: users || [] }
   }
 
   const handleAhoy = async (friendId: string) => {
     const response = await fetch('/api/ahoys/send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ receiverId: friendId, phrase }),
+      // No phrase: the server sends the sender's active phrase.
+      body: JSON.stringify({ receiverId: friendId }),
     })
 
     if (!response.ok) {
       throw new Error('Failed to send ahoy')
     }
+    const { phrase: sent } = await response.json().catch(() => ({ phrase: undefined }))
+    if (typeof sent === 'string' && sent !== phrase) setPhrase(sent)
   }
 
   const handleShare = async () => {

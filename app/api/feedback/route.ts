@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 
 export async function POST(request: NextRequest) {
   try {
-    const { userId, version, message } = await request.json()
+    const { version, message } = await request.json()
 
     if (!message?.trim()) {
       return NextResponse.json({ error: 'Message required' }, { status: 400 })
@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
     }
 
     const { error } = await supabase.from('feedback').insert({
-      user_id: userId || user.id,
+      user_id: user.id, // never trust a client-supplied id
       version: version || 'unknown',
       message: message.trim(),
     })
