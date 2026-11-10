@@ -15,6 +15,7 @@ const REASON_STATUS: Record<string, number> = {
   blocked: 403, // reported to the client as not_friends so blocks stay private
   rate_limited: 429,
   invalid_request: 400,
+  no_username: 403, // sender or receiver hasn't picked a username yet
 }
 
 Deno.serve(async (req) => {

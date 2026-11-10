@@ -33,7 +33,8 @@ export function invalidateCrew(qc: QueryClient) {
 
 export interface Profile {
   id: string
-  username: string
+  /** null for a social-login account that hasn't claimed a username yet */
+  username: string | null
   activePhraseId: number
   activePhrase: string
 }

@@ -15,6 +15,7 @@ const FAILURE_STATUS: Record<SendAhoyFailure, number> = {
   blocked: 403,
   rate_limited: 429,
   invalid_request: 400,
+  no_username: 403,
 }
 
 export async function POST(request: NextRequest) {
