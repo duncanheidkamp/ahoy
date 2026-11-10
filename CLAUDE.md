@@ -238,6 +238,12 @@ Space for pirate voice clips on send/receive.
 Native clients talk to Supabase directly (RLS + RPCs above) and send via the
 `send-ahoy` Edge Function.
 
+The Expo app lives in `mobile/` (SDK 58, Expo Router, TanStack Query,
+development build via `expo-dev-client`). It has its own package.json and
+lint/test setup — see `mobile/README.md`; the root tsconfig/eslint exclude it.
+`mobile/lib/types.ts` is a copy of `lib/supabase/types.ts`: update both on a
+schema change. Colors/type live only in `mobile/theme.ts`.
+
 ## Deployment
 
 ### Vercel
