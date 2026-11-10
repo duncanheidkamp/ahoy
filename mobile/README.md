@@ -14,7 +14,8 @@ npx expo start                # then open the dev build on your phone
 ```
 
 Builds: `npx eas-cli@latest build --profile development --platform ios|android`.
-Cloud builds don't see `.env`; add the two `EXPO_PUBLIC_*` values with
+Cloud builds don't see `.env`; add every `EXPO_PUBLIC_*` value (Supabase URL +
+anon key, links domain, Google client IDs) with
 `npx eas-cli@latest env:create` for each EAS environment you build.
 
 Layout: `index.ts` (entry: push bootstrap, then expo-router), `app/` routes
@@ -145,3 +146,157 @@ Delivery to a locked phone and the custom sound (both platforms); "Ahoy
 back!" from the lock screen and with the app suspended/killed (iOS especially);
 Android headless task under Doze/battery savers; per-sender grouping on iOS;
 the pre-prompt → system dialog flow; token re-binding when switching accounts.
+
+## Social features (Phase 4)
+
+| Feature | Where |
+|---|---|
+| Sign in with Apple (iOS) / Google (both) | `components/social-auth-slot.tsx`, `lib/social-auth.ts` (flows, nonce, which buttons), `lib/social-auth-native.ts` |
+| "Pick your pirate name" for social-login accounts | `app/(onboarding)/pick-username.tsx`, routed by `lib/auth-routing.ts` from `app/_layout.tsx` |
+| Invite links `https://<domain>/add/<name>` and `ahoy://add/<name>` | `app/add/[username].tsx`, `lib/links.ts`, `../links/` (site) |
+| Requests: accept / decline / cancel, count badge on Requests | `app/(app)/requests.tsx`, Crew header |
+| Phrases with locks, "N more to unlock", unlock celebration, secret Yo! reveal | Settings, `components/phrase-celebration.tsx`, `lib/phrases.ts` |
+| Long-press a crewmate → Remove / Block / Report; Unblock list | `components/crew-actions.tsx`, `app/(app)/report.tsx`, Settings |
+| Delete account (type your username) | `app/(app)/delete-account.tsx`, `lib/delete-account.ts` |
+| Feedback ("message in a bottle") | Settings → `feedback` table |
+
+Behavior worth knowing:
+
+- **Declined requests look pending to the sender** everywhere ("Request
+  sent"). The database keeps declined rows so they can't be re-sent; Cancel on
+  one only hides it on that device (`lib/hidden-requests.ts`).
+- **Blocks are silent.** Someone who blocked you looks like "no such sailor"
+  on an invite link and never shows up in search.
+- **Unlock celebrations** are remembered per user on the device (SecureStore);
+  the server decides what's unlocked. On a new device you'll see each earned
+  unlock once. Yo! gets the PWA's full-screen reveal and, like the PWA,
+  becomes your active phrase.
+- **Pending invite:** opening an invite link signed out (or before picking a
+  username) remembers it for 24 h and opens it right after you get in.
+
+### Social login — decisions
+
+- **Apple is iOS-only (hidden on Android).** On Android it would need the web
+  OAuth flow: a Services ID, a client-secret JWT that Apple forces you to
+  regenerate at least every 6 months (or sign-in silently breaks), a browser
+  round trip with a deep-link return to `ahoy://auth/callback` and PKCE
+  handling. Android users have Google and email; App Store guideline 4.8 only
+  applies to iOS. Trade-off: someone who signed up with Apple on an iPhone
+  can't log into that account on Android (they'd need email/Google on a new
+  account). Revisit if that matters.
+- **Google on iOS is only shown together with Apple** (guideline 4.8).
+- New social-login accounts have **no username** until they pick one; the
+  database hides them from everyone and refuses requests/ahoys until then.
+
+### Social login — one-time setup (Duncan)
+
+Do these in order. Everything is free except the Apple Developer Program.
+
+**1. Sign in with Apple (needs the paid Apple Developer account)**
+
+1. developer.apple.com → Certificates, Identifiers & Profiles → Identifiers →
+   `com.duncanheidkamp.ahoy` → enable **Sign in with Apple** (Primary App ID)
+   and **Associated Domains**. (EAS also syncs capabilities from
+   `app.config.ts` — `usesAppleSignIn` / `associatedDomains` — on the next
+   `eas build`; check they're ticked.)
+2. Keys → **+** → name "Ahoy Sign in with Apple", tick **Sign in with Apple**,
+   Configure → primary App ID `com.duncanheidkamp.ahoy` → Save → Download the
+   `.p8` (only downloadable once; never commit it — `*.p8` is gitignored).
+   Note the **Key ID** and your **Team ID** (Membership).
+3. *(Only if you ever add web/Android Apple sign-in)*: Identifiers → **+** →
+   Services IDs → e.g. `com.duncanheidkamp.ahoy.signin`, enable Sign in with
+   Apple, add domain `<project-ref>.supabase.co` and return URL
+   `https://<project-ref>.supabase.co/auth/v1/callback`. Not needed for the
+   native iOS flow used now.
+4. Supabase dashboard → Authentication → Sign In / Providers → **Apple** →
+   enable. **Client IDs**: `com.duncanheidkamp.ahoy` (add the Services ID too
+   if you did step 3). Native sign-in needs no secret key there.
+5. Token revocation on account deletion (Apple requires it):
+   `npx supabase secrets set APPLE_TEAM_ID=… APPLE_KEY_ID=… APPLE_CLIENT_ID=com.duncanheidkamp.ahoy APPLE_PRIVATE_KEY="$(cat AuthKey_XXXX.p8)"`
+   then redeploy `delete-account`. Without them deletion still works, it just
+   skips revocation (logged).
+
+**2. Google Sign-In (Google Cloud console, same project as Firebase is fine)**
+
+1. APIs & Services → OAuth consent screen: External, app name "Ahoy!",
+   support email, privacy policy URL `https://<links domain>/privacy`, scopes
+   `email`, `profile`, `openid`. Publish it (Testing mode only lets listed test
+   users in).
+2. Credentials → Create OAuth client ID, three times:
+   - **Web application** ("Ahoy Supabase") — no origins needed. This id is
+     `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` (the idToken audience on Android).
+   - **iOS** — bundle ID `com.duncanheidkamp.ahoy` →
+     `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID`. `app.config.ts` turns it into the
+     reversed URL scheme the SDK needs.
+   - **Android** — package `com.duncanheidkamp.ahoy` and the **SHA-1** of the
+     signing key: `npx eas-cli@latest credentials` → Android → (profile) →
+     Keystore → SHA1. Create one Android client per key you sign with (EAS
+     development/preview keystore, and later the Play Console *App signing
+     key* SHA-1 from Setup → App integrity). →
+     `EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID` (not sent at runtime; the app only
+     shows Google when it's set, and Google matches the app by package + SHA-1).
+3. Supabase → Authentication → Providers → **Google** → enable. **Client
+   IDs** (authorized audiences): `<web id>,<ios id>`. Client secret: the web
+   client's secret. Turn on **Skip nonce checks** — the Google iOS SDK puts
+   its own nonce in the token and doesn't expose it.
+4. Add the three `EXPO_PUBLIC_GOOGLE_*` values to `.env` and as EAS
+   environment variables, then make a new native build (the URL scheme is
+   native).
+
+**3. Supabase Auth settings**
+
+- Authentication → URL Configuration → Redirect URLs: add `ahoy://**`
+  (harmless now; needed if any web-based auth flow is added later).
+- Linking: Supabase links a Google sign-in to an existing email account with
+  the same verified email automatically. Apple "Hide My Email" addresses
+  create a separate account.
+
+## Invite links
+
+`https://<EXPO_PUBLIC_LINKS_DOMAIN>/add/<username>` opens the app directly
+(iOS universal link / Android App Link) when installed, otherwise the
+`links/` fallback page. `ahoy://add/<username>` always opens the app.
+
+Setup (Duncan), once the domain is chosen:
+
+1. Pick the domain/subdomain (e.g. `ahoy.duncanheidkamp.com`). Set
+   `EXPO_PUBLIC_LINKS_DOMAIN` in `.env` and EAS env vars.
+2. Vercel → New Project → this repo, **Root Directory `links`**, Framework
+   "Other", no build command → add the domain → DNS as Vercel says.
+3. In `links/.well-known/apple-app-site-association` replace `TEAMID` with your
+   Team ID. In `links/.well-known/assetlinks.json` put the SHA-256 of every key
+   that signs Android builds (`eas credentials` → Android → SHA256; add the Play
+   App signing key's SHA-256 later). Deploy.
+4. Check: `curl -sI https://<domain>/.well-known/apple-app-site-association`
+   → 200, `content-type: application/json`, no redirect. Google's checker:
+   `https://digitalassetlinks.googleapis.com/v1/statements:list?source.web.site=https://<domain>&relation=delegate_permission/common.handle_all_urls`.
+5. New native build (associated domains / intent filter are native). Apple's
+   CDN caches the AASA — allow up to a day, or use
+   `applinks:<domain>?mode=developer` while testing.
+6. Fill `STORE_LINKS` in `links/add.html` once there are store/TestFlight URLs.
+
+## Reports
+
+Long-press → Report (optionally also blocks). Rows go to `public.reports`
+(the app can insert, never read). The app then calls `notify-report`, which
+emails you via Resend if configured, else just logs (Supabase → Edge
+Functions → notify-report → Logs). Setup:
+
+1. resend.com → API key; verify a sending domain (or use their
+   `onboarding@resend.dev` test sender, which only delivers to your own Resend
+   account email).
+2. `npx supabase secrets set RESEND_API_KEY=re_… REPORT_EMAIL_TO=<you> REPORT_EMAIL_FROM="Ahoy Reports <reports@your-domain>"`
+3. `npx supabase functions deploy notify-report`
+
+Apple expects reports to be acted on within 24 hours (guideline 1.2): review
+`public.reports` in the dashboard, and delete abusive accounts in
+Authentication → Users.
+
+## What only works with real accounts / devices
+
+Apple and Google sign-in (need the provider setup above and a dev build on a
+device);
+universal links / App Links (need the deployed domain, real Team ID and
+SHA-256, and a fresh build); Apple token revocation (needs the `.p8`); report
+emails (Resend). Everything else is covered by unit tests and the SQL/Deno
+tests.
