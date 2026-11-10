@@ -6,10 +6,12 @@ import { useEffect, useState } from 'react'
 import { AppState, Platform, Text } from 'react-native'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 
+import { InAppBannerHost } from '@/components/in-app-banner'
 import { ToastProvider } from '@/components/toast'
 import { Centered, MutedText } from '@/components/ui'
 import { AuthProvider, useAuth } from '@/lib/auth'
 import { isConfigured } from '@/lib/env'
+import { usePushForeground } from '@/lib/push/use-push'
 import { colors, type } from '@/theme'
 
 SplashScreen.preventAutoHideAsync().catch(() => {})
@@ -41,6 +43,12 @@ function RootNavigator() {
       </Stack.Protected>
     </Stack>
   )
+}
+
+/** Foreground notifications -> in-app banner/sound; badge clearing. */
+function PushForeground() {
+  usePushForeground()
+  return <InAppBannerHost />
 }
 
 function ConfigError() {
@@ -77,6 +85,7 @@ export default function RootLayout() {
           <AuthProvider>
             <ToastProvider>
               <RootNavigator />
+              <PushForeground />
             </ToastProvider>
           </AuthProvider>
         ) : (

@@ -9,6 +9,74 @@ export interface AhoyPush {
   senderUsername: string
 }
 
+export type FriendshipPushKind = 'request' | 'accepted'
+
+export interface FriendshipPush {
+  kind: FriendshipPushKind
+  friendshipId: string
+  actorId: string
+  actorUsername: string
+}
+
+/** One Expo push message (subset of the fields we use). */
+export interface ExpoMessage {
+  to: string
+  title?: string
+  body: string
+  sound: string | null
+  priority: 'default' | 'normal' | 'high'
+  channelId: string
+  categoryId?: string
+  threadId?: string
+  data: Record<string, string>
+}
+
+// Native channel / category / sound names. The app creates the channels and
+// registers the category at startup (mobile/lib/push/setup.ts); a push naming a
+// channel the device doesn't have is NOT displayed on Android.
+export const AHOY_CHANNEL_ID = 'ahoy-v1'
+export const REQUESTS_CHANNEL_ID = 'requests-v1'
+export const AHOY_CATEGORY_ID = 'ahoy'
+export const AHOY_SOUND = 'ahoy.wav'
+
+/**
+ * An Ahoy. No badge (the app never sets one), no collapseId/tag (different
+ * ahoys must never replace each other). threadId only groups visually on iOS,
+ * per sender.
+ */
+export function ahoyMessage(to: string, push: AhoyPush): ExpoMessage {
+  return {
+    to,
+    title: push.phrase,
+    body: `@${push.senderUsername}`,
+    sound: AHOY_SOUND,
+    priority: 'high',
+    channelId: AHOY_CHANNEL_ID,
+    categoryId: AHOY_CATEGORY_ID,
+    threadId: `ahoy-${push.senderId}`,
+    data: { type: 'ahoy', senderId: push.senderId, senderUsername: push.senderUsername },
+  }
+}
+
+/** "@x wants to join your crew" / "@x joined your crew". No title: iOS shows the app name. */
+export function friendshipMessage(to: string, push: FriendshipPush): ExpoMessage {
+  const request = push.kind === 'request'
+  return {
+    to,
+    body: request ? `@${push.actorUsername} wants to join your crew` : `@${push.actorUsername} joined your crew`,
+    sound: 'default',
+    priority: 'high',
+    channelId: REQUESTS_CHANNEL_ID,
+    threadId: 'crew',
+    data: {
+      type: request ? 'friend_request' : 'friend_accepted',
+      friendshipId: push.friendshipId,
+      actorId: push.actorId,
+      actorUsername: push.actorUsername,
+    },
+  }
+}
+
 export interface ExpoResult {
   sent: number
   /** Tokens Expo reported as DeviceNotRegistered — safe to delete. */
@@ -16,9 +84,9 @@ export interface ExpoResult {
   errors: string[]
 }
 
-export async function sendExpoPushes(tokens: string[], push: AhoyPush): Promise<ExpoResult> {
+export async function sendExpoMessages(messages: ExpoMessage[]): Promise<ExpoResult> {
   const result: ExpoResult = { sent: 0, deadTokens: [], errors: [] }
-  if (tokens.length === 0) return result
+  if (messages.length === 0) return result
 
   const headers: Record<string, string> = {
     'Accept': 'application/json',
@@ -28,21 +96,10 @@ export async function sendExpoPushes(tokens: string[], push: AhoyPush): Promise<
   const accessToken = Deno.env.get('EXPO_ACCESS_TOKEN')
   if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`
 
-  for (let i = 0; i < tokens.length; i += EXPO_BATCH) {
-    const batch = tokens.slice(i, i + EXPO_BATCH)
-    const messages = batch.map((to) => ({
-      to,
-      title: push.phrase,
-      body: `@${push.senderUsername}`,
-      sound: 'ahoy.wav',
-      categoryId: 'ahoy',
-      channelId: 'ahoy-v1',
-      priority: 'high',
-      data: { senderId: push.senderId, senderUsername: push.senderUsername },
-    }))
-
+  for (let i = 0; i < messages.length; i += EXPO_BATCH) {
+    const batch = messages.slice(i, i + EXPO_BATCH)
     try {
-      const res = await fetch(EXPO_PUSH_URL, { method: 'POST', headers, body: JSON.stringify(messages) })
+      const res = await fetch(EXPO_PUSH_URL, { method: 'POST', headers, body: JSON.stringify(batch) })
       const payload = await res.json().catch(() => null) as
         | { data?: Array<{ status: 'ok' | 'error'; message?: string; details?: { error?: string } }>; errors?: unknown[] }
         | null
@@ -55,7 +112,7 @@ export async function sendExpoPushes(tokens: string[], push: AhoyPush): Promise<
         if (ticket.status === 'ok') {
           result.sent++
         } else if (ticket.details?.error === 'DeviceNotRegistered') {
-          result.deadTokens.push(batch[idx])
+          result.deadTokens.push(batch[idx].to)
         } else {
           result.errors.push(`${ticket.details?.error ?? 'error'}: ${ticket.message ?? ''}`)
         }
@@ -65,6 +122,10 @@ export async function sendExpoPushes(tokens: string[], push: AhoyPush): Promise<
     }
   }
   return result
+}
+
+export function sendExpoPushes(tokens: string[], push: AhoyPush): Promise<ExpoResult> {
+  return sendExpoMessages(tokens.map((to) => ahoyMessage(to, push)))
 }
 
 // ---------------------------------------------------------------------------

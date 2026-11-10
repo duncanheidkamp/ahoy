@@ -1,10 +1,81 @@
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { useEffect, useState } from 'react'
+import { AppState, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 
 import { useToast } from '@/components/toast'
 import { Button, Loading, MutedText, SectionTitle } from '@/components/ui'
+import { useUserId } from '@/lib/auth'
+import { getPermission, registrationDeps, requestPermission } from '@/lib/push/native'
+import { notificationSetting, type NotificationSetting } from '@/lib/push/prompt'
+import { registerForPush, signOutWithPushCleanup } from '@/lib/push/registration'
 import { usePhrases, useProfile, useSetActivePhrase } from '@/lib/queries'
-import { supabase } from '@/lib/supabase'
 import { colors, minTouch, radii, spacing, type } from '@/theme'
+
+const SETTING_LABEL: Record<NotificationSetting, string> = {
+  on: 'On',
+  off: 'Off',
+  blocked: 'Off — turn on in the Settings app',
+}
+
+function useNotificationSetting() {
+  const [setting, setSetting] = useState<NotificationSetting | null>(null)
+  useEffect(() => {
+    let mounted = true
+    const refresh = () =>
+      getPermission()
+        .then((p) => mounted && setSetting(notificationSetting(p)))
+        .catch(() => {})
+    refresh()
+    // Pick up changes made in the system Settings app.
+    const sub = AppState.addEventListener('change', (s) => s === 'active' && refresh())
+    return () => {
+      mounted = false
+      sub.remove()
+    }
+  }, [])
+  return [setting, setSetting] as const
+}
+
+function NotificationsRow() {
+  const userId = useUserId()
+  const toast = useToast()
+  const [setting, setSetting] = useNotificationSetting()
+  const [busy, setBusy] = useState(false)
+
+  const enable = async () => {
+    if (setting === 'blocked') {
+      await Linking.openSettings().catch(() => {})
+      return
+    }
+    setBusy(true)
+    try {
+      const p = await requestPermission()
+      setSetting(notificationSetting(p))
+      if (p.granted) await registerForPush(registrationDeps, userId)
+      else toast('Notifications stay off for now')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <View style={styles.section}>
+      <SectionTitle>Notifications</SectionTitle>
+      <View style={styles.row}>
+        <Text style={styles.rowText} accessibilityLabel={`Notifications ${setting ? SETTING_LABEL[setting] : ''}`}>
+          {setting ? SETTING_LABEL[setting] : '…'}
+        </Text>
+        {setting && setting !== 'on' ? (
+          <Button
+            compact
+            title={setting === 'blocked' ? 'Open Settings' : 'Turn on'}
+            loading={busy}
+            onPress={enable}
+          />
+        ) : null}
+      </View>
+    </View>
+  )
+}
 
 export default function SettingsScreen() {
   const toast = useToast()
@@ -20,10 +91,12 @@ export default function SettingsScreen() {
     }
   }
 
+  const [loggingOut, setLoggingOut] = useState(false)
   const logOut = async () => {
-    const { error } = await supabase.auth.signOut()
-    // signOut clears the local session even if the network call fails.
-    if (error) toast('Logged out on this device')
+    setLoggingOut(true)
+    // Removes this device's push token first (needs the session), then signs out.
+    const { tokenRemoved } = await signOutWithPushCleanup(registrationDeps)
+    if (!tokenRemoved) toast('Logged out. This phone may still get ahoys until you log in again')
   }
 
   return (
@@ -73,7 +146,9 @@ export default function SettingsScreen() {
         )}
       </View>
 
-      <Button title="Log out" variant="danger" onPress={logOut} />
+      <NotificationsRow />
+
+      <Button title="Log out" variant="danger" onPress={logOut} loading={loggingOut} />
     </ScrollView>
   )
 }
@@ -102,4 +177,16 @@ const styles = StyleSheet.create({
   phraseText: { ...type.bodyBold, color: colors.text },
   phraseTextSelected: { color: colors.primaryText },
   phraseMeta: { ...type.small, color: colors.textMuted },
+  row: {
+    minHeight: minTouch + 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.surfaceRaised,
+    borderRadius: radii.md,
+  },
+  rowText: { ...type.bodyBold, color: colors.text, flexShrink: 1 },
 })

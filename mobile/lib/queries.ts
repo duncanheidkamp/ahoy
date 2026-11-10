@@ -210,6 +210,21 @@ export function recordSentInCache(qc: QueryClient, receiverId: string) {
 }
 
 // ---------------------------------------------------------------------------
+// Friend-request pushes
+
+/**
+ * Asks the server to push "@me wants to join your crew" (after creating a
+ * request) or "@me joined your crew" (after accepting one). Fire and forget:
+ * the server decides from the row's current state whether a push is due and
+ * makes repeats no-ops (notify-friendship Edge Function).
+ */
+export function notifyFriendship(friendshipId: string): void {
+  supabase.functions
+    .invoke('notify-friendship', { body: { friendship_id: friendshipId } })
+    .catch(() => {})
+}
+
+// ---------------------------------------------------------------------------
 // Requests
 
 export interface FriendRequestRow {
@@ -272,9 +287,11 @@ function useFriendshipMutation<T>(fn: (arg: T) => PromiseLike<{ error: unknown }
 }
 
 export function useAcceptRequest() {
-  return useFriendshipMutation((id: string) =>
-    supabase.from('friendships').update({ status: 'accepted' }).eq('id', id)
-  )
+  return useFriendshipMutation(async (id: string) => {
+    const result = await supabase.from('friendships').update({ status: 'accepted' }).eq('id', id)
+    if (!result.error) notifyFriendship(id)
+    return result
+  })
 }
 
 export function useDeclineRequest() {
@@ -330,15 +347,19 @@ export async function addFriend(myId: string, otherId: string): Promise<AddResul
     if (existing.requester_id === otherId) {
       const { error } = await supabase.from('friendships').update({ status: 'accepted' }).eq('id', existing.id)
       if (error) throw error
+      notifyFriendship(existing.id)
       return 'crew'
     }
     return 'requested'
   }
 
-  const { error } = await supabase
+  const { data: created, error } = await supabase
     .from('friendships')
     .insert({ requester_id: myId, addressee_id: otherId, status: 'pending' })
+    .select('id')
+    .single()
   if (error) throw error
+  notifyFriendship(created.id)
   return 'requested'
 }
 
