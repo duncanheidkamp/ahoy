@@ -5,9 +5,13 @@ import { FunctionsFetchError, FunctionsHttpError, FunctionsRelayError } from '@s
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { useMemo } from 'react'
 
+import * as Crypto from 'expo-crypto'
+
+import { createHiddenRequests } from './hidden-requests'
+import { kv } from './kv'
 import { classifySendError, type SendFailure } from './send-machine'
 import { supabase } from './supabase'
-import type { MyStats, User } from './types'
+import type { MyStats, User, UserCard } from './types'
 
 export const queryKeys = {
   profile: ['profile'] as const,
@@ -16,6 +20,8 @@ export const queryKeys = {
   requests: ['requests'] as const,
   phrases: ['phrases'] as const,
   search: (q: string) => ['search', q] as const,
+  userCard: (username: string) => ['userCard', username] as const,
+  blocks: ['blocks'] as const,
   usernameAvailable: (name: string) => ['usernameAvailable', name] as const,
 }
 
@@ -25,6 +31,7 @@ export function invalidateCrew(qc: QueryClient) {
     qc.invalidateQueries({ queryKey: queryKeys.friendBadges }),
     qc.invalidateQueries({ queryKey: queryKeys.stats }),
     qc.invalidateQueries({ queryKey: queryKeys.requests }),
+    qc.invalidateQueries({ queryKey: ['userCard'] }),
   ])
 }
 
@@ -33,14 +40,16 @@ export function invalidateCrew(qc: QueryClient) {
 
 export interface Profile {
   id: string
-  username: string
+  /** null for a social-login account that hasn't claimed a username yet */
+  username: string | null
   activePhraseId: number
   activePhrase: string
 }
 
-export function useProfile() {
+export function useProfile({ enabled = true }: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: queryKeys.profile,
+    enabled,
     queryFn: async (): Promise<Profile | null> => {
       const { data, error } = await supabase.rpc('get_my_profile')
       if (error) throw error
@@ -231,17 +240,24 @@ export interface FriendRequestRow {
   id: string
   createdAt: string
   other: User
+  /**
+   * Outgoing only: the other side declined. NEVER shown — it still reads
+   * "Request sent"; it only changes what Cancel does (hide locally, since the
+   * requester can't delete a declined row).
+   */
+  declined: boolean
 }
 
 type RequestQueryRow = {
   id: string
   created_at: string
+  status: 'pending' | 'accepted' | 'declined'
   requester: User | null
   addressee: User | null
 }
 
 const REQUEST_SELECT =
-  'id, created_at, requester:users!friendships_requester_id_fkey(id, username, created_at), addressee:users!friendships_addressee_id_fkey(id, username, created_at)'
+  'id, created_at, status, requester:users!friendships_requester_id_fkey(id, username, created_at), addressee:users!friendships_addressee_id_fkey(id, username, created_at)'
 
 export function useRequests(userId: string) {
   return useQuery({
@@ -254,19 +270,21 @@ export function useRequests(userId: string) {
           .eq('addressee_id', userId)
           .eq('status', 'pending')
           .order('created_at', { ascending: false }),
+        // Declined requests stay listed as "Request sent" (never reveal a decline).
         supabase
           .from('friendships')
           .select(REQUEST_SELECT)
           .eq('requester_id', userId)
-          .eq('status', 'pending')
+          .in('status', ['pending', 'declined'])
           .order('created_at', { ascending: false }),
       ])
       if (incoming.error) throw incoming.error
       if (outgoing.error) throw outgoing.error
+      const hidden = new Set(await createHiddenRequests(kv, userId).get())
       const map = (rows: unknown, side: 'requester' | 'addressee'): FriendRequestRow[] =>
         ((rows ?? []) as RequestQueryRow[])
-          .filter((r) => r[side])
-          .map((r) => ({ id: r.id, createdAt: r.created_at, other: r[side]! }))
+          .filter((r) => r[side] && !hidden.has(r.id))
+          .map((r) => ({ id: r.id, createdAt: r.created_at, other: r[side]!, declined: r.status === 'declined' }))
       return {
         incoming: map(incoming.data, 'requester'),
         outgoing: map(outgoing.data, 'addressee'),
@@ -300,8 +318,145 @@ export function useDeclineRequest() {
   )
 }
 
-export function useCancelRequest() {
-  return useFriendshipMutation((id: string) => supabase.from('friendships').delete().eq('id', id))
+export function useCancelRequest(userId: string) {
+  return useFriendshipMutation(async (request: FriendRequestRow) => {
+    if (request.declined) {
+      await createHiddenRequests(kv, userId).hide(request.id)
+      return { error: null }
+    }
+    return supabase.from('friendships').delete().eq('id', request.id)
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Remove, block, report
+
+/** Remove a crewmate (either side may delete an accepted friendship). */
+export function useRemoveFriend(myId: string) {
+  return useFriendshipMutation((otherId: string) =>
+    supabase
+      .from('friendships')
+      .delete()
+      .or(
+        `and(requester_id.eq.${myId},addressee_id.eq.${otherId}),and(requester_id.eq.${otherId},addressee_id.eq.${myId})`
+      )
+  )
+}
+
+function isUniqueViolation(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && (error as { code?: string }).code === '23505'
+}
+
+export async function blockUser(myId: string, otherId: string): Promise<void> {
+  // The blocks_remove_friendship trigger deletes any friendship/request.
+  const { error } = await supabase.from('blocks').insert({ blocker_id: myId, blocked_id: otherId })
+  if (error && !isUniqueViolation(error)) throw error
+}
+
+export function useBlockUser(myId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (otherId: string) => blockUser(myId, otherId),
+    onSettled: () => Promise.all([invalidateCrew(qc), qc.invalidateQueries({ queryKey: queryKeys.blocks })]),
+  })
+}
+
+export interface BlockedUser {
+  id: string
+  username: string | null
+  blockedAt: string
+}
+
+export function useBlockedUsers() {
+  return useQuery({
+    queryKey: queryKeys.blocks,
+    queryFn: async (): Promise<BlockedUser[]> => {
+      const { data, error } = await supabase
+        .from('blocks')
+        .select('blocked_id, created_at, blocked:users!blocks_blocked_id_fkey(id, username)')
+        .order('created_at', { ascending: false })
+      if (error) throw error
+      return ((data ?? []) as unknown as {
+        blocked_id: string
+        created_at: string
+        blocked: { id: string; username: string | null } | null
+      }[]).map((b) => ({ id: b.blocked_id, username: b.blocked?.username ?? null, blockedAt: b.created_at }))
+    },
+  })
+}
+
+export function useUnblockUser() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (otherId: string) => {
+      const { error } = await supabase.from('blocks').delete().eq('blocked_id', otherId)
+      if (error) throw error
+    },
+    onSettled: () =>
+      Promise.all([
+        qc.invalidateQueries({ queryKey: queryKeys.blocks }),
+        qc.invalidateQueries({ queryKey: ['userCard'] }),
+        qc.invalidateQueries({ queryKey: ['search'] }),
+      ]),
+  })
+}
+
+/**
+ * Files a report (insert-own; no select back, so the id is made here) and
+ * asks notify-report to email it. The email is fire and forget — the report
+ * is saved either way.
+ */
+export async function reportUser(reportedId: string, note: string | null): Promise<void> {
+  const id = Crypto.randomUUID()
+  const { error } = await supabase.from('reports').insert({ id, reported_id: reportedId, note })
+  if (error) throw error
+  supabase.functions.invoke('notify-report', { body: { report_id: id } }).catch(() => {})
+}
+
+// ---------------------------------------------------------------------------
+// Invite links
+
+/** get_user_card(): null = not found (or unavailable — deliberately the same). */
+export function useUserCard(username: string | null) {
+  return useQuery({
+    queryKey: queryKeys.userCard(username ?? ''),
+    enabled: !!username,
+    queryFn: async (): Promise<UserCard | null> => {
+      const { data, error } = await supabase.rpc('get_user_card', { p_username: username! })
+      if (error) throw error
+      return data?.[0] ?? null
+    },
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Username (social-login accounts)
+
+export function useClaimUsername() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (username: string) => {
+      const { data, error } = await supabase.rpc('claim_username', { p_username: username })
+      if (error) throw error
+      return data
+    },
+    onSuccess: (username) => {
+      // Flip the route guard right away; refetch for the rest of the profile.
+      qc.setQueryData<Profile | null>(queryKeys.profile, (prev) => (prev ? { ...prev, username } : prev))
+      void qc.invalidateQueries({ queryKey: queryKeys.profile })
+    },
+    // e.g. already claimed on another device: reload and let the guard route.
+    onError: () => void qc.invalidateQueries({ queryKey: queryKeys.profile }),
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Feedback
+
+export async function sendFeedback(userId: string, version: string, message: string): Promise<void> {
+  // user_id from the session; RLS also forces it to equal auth.uid().
+  const { error } = await supabase.from('feedback').insert({ user_id: userId, version, message })
+  if (error) throw error
 }
 
 // ---------------------------------------------------------------------------

@@ -3,16 +3,17 @@ import { useCallback, useState } from 'react'
 import { FlatList, Pressable, RefreshControl, Share, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
+import { useSailorActions } from '@/components/crew-actions'
 import { CrewRow } from '@/components/crew-row'
 import { useToast } from '@/components/toast'
 import { Button, Centered, Loading, MutedText } from '@/components/ui'
 import { useUserId } from '@/lib/auth'
-import { INVITE_BASE_URL } from '@/lib/env'
+import { LINKS_DOMAIN } from '@/lib/env'
+import { inviteMessage, inviteUrl } from '@/lib/links'
+import { DEFAULT_PHRASE } from '@/lib/phrases'
 import { usePrePromptOffer } from '@/lib/push/use-push'
-import { useCrew, useProfile, useRequests } from '@/lib/queries'
+import { useCrew, useProfile, useRequests, type CrewMember } from '@/lib/queries'
 import { colors, minTouch, radii, spacing, type } from '@/theme'
-
-const DEFAULT_PHRASE = 'Ahoy!'
 
 function HeaderButton({ label, count, onPress }: { label: string; count?: number; onPress: () => void }) {
   const a11y = count ? `${label}, ${count} pending` : label
@@ -41,6 +42,12 @@ export default function CrewScreen() {
   const { crew, totalSent, isLoading, isError, refetch } = useCrew()
   const requests = useRequests(userId)
   const [refreshing, setRefreshing] = useState(false)
+  const actions = useSailorActions(userId)
+  const openActions = useCallback(
+    (m: CrewMember) => actions.open({ id: m.id, username: m.username }, { inCrew: true }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [actions.open]
+  )
 
   const phrase = profile.data?.activePhrase ?? DEFAULT_PHRASE
   const incomingCount = requests.data?.incoming.length ?? 0
@@ -60,10 +67,8 @@ export default function CrewScreen() {
   const invite = useCallback(async () => {
     const username = profile.data?.username
     if (!username) return
-    // TODO(phase-4): real universal link instead of the placeholder domain.
-    const url = `${INVITE_BASE_URL}${username}`
     try {
-      await Share.share({ message: `Join my crew on Ahoy! ${url}`, url })
+      await Share.share({ message: inviteMessage(username, LINKS_DOMAIN), url: inviteUrl(username, LINKS_DOMAIN) })
     } catch {
       // User dismissed or share unavailable; nothing to do.
     }
@@ -102,7 +107,9 @@ export default function CrewScreen() {
       <FlatList
         data={crew}
         keyExtractor={(m) => m.id}
-        renderItem={({ item, index }) => <CrewRow member={item} index={index} phrase={phrase} onToast={toast} />}
+        renderItem={({ item, index }) => (
+          <CrewRow member={item} index={index} phrase={phrase} onToast={toast} onLongPress={openActions} />
+        )}
         contentContainerStyle={crew.length === 0 ? styles.emptyContainer : undefined}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} colors={[colors.primary]} />
@@ -125,6 +132,7 @@ export default function CrewScreen() {
     <SafeAreaView style={styles.safe} edges={['top']}>
       {header}
       <View style={styles.body}>{body}</View>
+      {actions.sheet}
     </SafeAreaView>
   )
 }

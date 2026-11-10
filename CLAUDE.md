@@ -45,6 +45,7 @@ npx supabase db push                     # apply new migrations
 npx supabase functions deploy send-ahoy
 npx supabase functions deploy delete-account
 npx supabase functions deploy notify-friendship
+npx supabase functions deploy notify-report
 npx supabase secrets set FCM_SERVICE_ACCOUNT="$(cat service-account.json)" EXPO_ACCESS_TOKEN=...
 ```
 
@@ -144,8 +145,9 @@ ahoy/
 ├── supabase/
 │   ├── config.toml
 │   ├── migrations/       # THE schema — one file per change
-│   ├── functions/        # Edge Functions (Deno): send-ahoy, notify-friendship, delete-account; _tests/
+│   ├── functions/        # Edge Functions (Deno): send-ahoy, notify-friendship, notify-report, delete-account; _tests/
 │   └── tests/            # rls_test.sql + plain-postgres stub
+├── links/                # Static site for the links domain: /add/<username>, AASA, assetlinks, /privacy (own Vercel project)
 ├── database-schema.sql   # Pointer to supabase/migrations
 ├── proxy.ts              # Auth proxy (Next 16 middleware)
 └── .env.local.example
@@ -157,13 +159,14 @@ Source of truth: `supabase/migrations/`. Summary:
 
 | Table | Notes |
 |-------|-------|
-| users | id (= auth.users.id), username, created_at are readable by signed-in users. `fcm_token` and `active_phrase_id` are private (column privileges) — **never `select('*')` on users**; use `PUBLIC_USER_COLUMNS` / `get_my_profile()`. Rows are created only by the `on_auth_user_created` trigger from `signUp({ options: { data: { username } } })`. |
+| users | id (= auth.users.id), username, created_at are readable by signed-in users. `fcm_token` and `active_phrase_id` are private (column privileges) — **never `select('*')` on users**; use `PUBLIC_USER_COLUMNS` / `get_my_profile()`. Rows are created only by the `on_auth_user_created` trigger: email signups need `signUp({ options: { data: { username } } })`; OAuth signups (Apple/Google) get `username` NULL until `claim_username()`. NULL-username rows are invisible to other users and can't request/send. |
 | friendships | requester inserts `pending` only; addressee moves pending→accepted/declined or declined→accepted; either deletes, except the requester can't delete a declined row (so it can't be re-sent). One row per unordered pair. |
 | blocks | blocker-only RLS. A block removes any friendship and refuses new requests and sends in both directions. |
 | ahoys | **no client writes.** Inserted only by `record_ahoy()` (service role). `phrase` is the sender's server-side active phrase. `receiver_id` becomes null if the receiver deletes their account. |
 | phrases | id, text, unlock_at, secret, sort. Secret phrases are hidden until unlocked. |
 | push_tokens | per-device tokens (ios/android = Expo, web = FCM), owner-only. Register with `register_push_token()`. |
-| feedback | in-app feedback, insert-own. |
+| feedback | in-app feedback, insert-own (`user_id` defaults to `auth.uid()`). |
+| reports | insert-own (`id, reported_id, note` only), **no client select**; note ≤ 500, 10/day per reporter. Emailed by `notify-report`. |
 | friendship_notifications | log of friend-request/accepted pushes; **no client access**. Written only by `claim_friendship_notification()`. |
 
 Key functions (all `security definer`, `search_path = ''`):
@@ -176,13 +179,17 @@ Key functions (all `security definer`, `search_path = ''`):
 | `search_users(q)` | authenticated | username search with totals, hides blocks |
 | `get_my_profile()` / `get_my_phrases()` / `set_active_phrase(id)` | authenticated | own profile + phrase picker |
 | `username_available(name)` | anon | signup check |
+| `claim_username(name)` | authenticated | social-login accounts set their username once (only while NULL) |
+| `get_user_card(name)` | authenticated | invite-link lookup: user + total + `relation` (`self/crew/requested/incoming/blocked/none`); blocked-by-them = no row, declined = `requested` |
+| `claim_report_notification(caller, report)` | service_role | hands a report to `notify-report` once, only to its reporter |
 | `claim_friendship_notification(caller, friendship)` | service_role | decides from the row's current state whether a friend push is due (pending+requester → `request` to addressee; accepted+addressee → `accepted` to requester); once per row+kind, 24h per-pair cooldown, 20 requests/h per requester, no push across blocks |
 
 ## Edge Functions
 
 - `send-ahoy` — `POST { receiver_id }` with the user's JWT. Calls `record_ahoy()`, then pushes to every receiver device via Expo (title = phrase, body = `@username`, `categoryId: 'ahoy'`, `channelId: 'ahoy-v1'`, `sound: 'ahoy.wav'`, `threadId: 'ahoy-<senderId>'`, `data: { type: 'ahoy', senderId, senderUsername }`, no badge/collapseId) and to the legacy FCM web token (needs `FCM_SERVICE_ACCOUNT` secret). Deletes tokens reported `DeviceNotRegistered`/`UNREGISTERED`. Errors: 401, 400, 403 `not_friends`, 429 `rate_limited`.
 - `notify-friendship` — `POST { friendship_id }` with the user's JWT, called by the native app after creating or accepting a request. `claim_friendship_notification()` decides; pushes "@x wants to join your crew" (`data.type: 'friend_request'`) or "@x joined your crew" (`'friend_accepted'`) on channel `requests-v1`. Repeats are 200 no-ops.
-- `delete-account` — `POST` with the user's JWT; deletes the auth user, schema cascades the rest.
+- `notify-report` — `POST { report_id }` with the user's JWT after filing a report; emails it via Resend if `RESEND_API_KEY`, `REPORT_EMAIL_TO`, `REPORT_EMAIL_FROM` are set, else logs.
+- `delete-account` — `POST` (optional `{ apple_authorization_code }`) with the user's JWT; revokes Sign in with Apple tokens if `APPLE_TEAM_ID/APPLE_KEY_ID/APPLE_CLIENT_ID/APPLE_PRIVATE_KEY` are set, then deletes the auth user; schema cascades the rest.
 
 Tests (mocked fetch / injected deps): `deno test --config supabase/functions/_tests/deno.json --allow-env supabase/functions/_tests`.
 
@@ -255,6 +262,11 @@ Push (Phase 3) lives in `mobile/lib/push/`; setup, credentials, per-platform
 `mobile/README.md` → Push notifications. Channel ids / category / sound names
 are duplicated in `mobile/lib/push/constants.ts`,
 `supabase/functions/_shared/push.ts` and `lib/push/expo.ts` — change together.
+
+Social (Phase 4): Sign in with Apple (iOS only) / Google, username picker for
+social accounts, invite links (`EXPO_PUBLIC_LINKS_DOMAIN`, `app/add/[username]`,
+`links/`), phrase unlocks, block/remove/report, account deletion, feedback —
+setup and decisions in `mobile/README.md` → Social features.
 
 ## Deployment
 

@@ -1,4 +1,4 @@
--- Phase 1 security/RLS checks. Runs in one transaction and rolls back.
+-- Security/RLS checks (Phases 1-4). Runs in one transaction and rolls back.
 -- Works against a local Supabase stack (`npx supabase db reset`, then
 --   psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 -f supabase/tests/rls_test.sql)
 -- or a plain Postgres prepared with plain-postgres-stub.sql.
@@ -57,6 +57,108 @@ do $$ begin
   assert public.username_available('alice') = false, 'alice should be taken';
 end $$;
 reset role;
+
+-- ---------------------------------------------------------------------------
+-- Social login (Phase 4): OAuth signups get a NULL username, claim it later
+-- ---------------------------------------------------------------------------
+insert into auth.users (id, email, raw_user_meta_data, raw_app_meta_data) values
+  -- frank stays without a username for the rest of the file
+  ('00000000-0000-0000-0000-00000000000f', 'f@x.test', '{"full_name":"Frank"}', '{"provider":"apple","providers":["apple"]}'),
+  -- a username-looking value in OAuth metadata is ignored
+  ('00000000-0000-0000-0000-000000000010', 'g@x.test', '{"username":"alice","name":"G"}', '{"provider":"google","providers":["google"]}');
+
+do $$ begin
+  assert (select count(*) from public.users where id in ('00000000-0000-0000-0000-00000000000f',
+          '00000000-0000-0000-0000-000000000010') and username is null) = 2,
+    'FAIL: OAuth signups should create NULL-username rows';
+  begin
+    insert into auth.users (email, raw_user_meta_data, raw_app_meta_data) values ('x@x.test', '{}', '{"provider":"email"}');
+    raise exception 'FAIL: email signup without username accepted';
+  exception when sqlstate '22023' then null; end;
+  begin
+    insert into auth.users (email, raw_user_meta_data, raw_app_meta_data) values ('x@x.test', '{"username":"x!"}', '{"provider":"email"}');
+    raise exception 'FAIL: email signup with invalid username accepted';
+  exception when sqlstate '22023' then null; end;
+end $$;
+
+-- anon cannot claim
+set local role anon;
+do $$ begin
+  begin
+    perform public.claim_username('gus');
+    raise exception 'FAIL: anon can call claim_username';
+  exception when insufficient_privilege then null; end;
+end $$;
+reset role;
+
+set local role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-000000000010');
+do $$ begin
+  assert (select username from public.get_my_profile()) is null, 'FAIL: profile username should be null';
+  assert (select active_phrase from public.get_my_profile()) = 'Ahoy!', 'OAuth user default phrase';
+  assert (select count(*) from public.users where id = auth.uid()) = 1, 'FAIL: NULL user cannot see own row';
+  begin
+    perform public.claim_username('ab');
+    raise exception 'FAIL: claimed an invalid username';
+  exception when sqlstate '22023' then null; end;
+  begin
+    perform public.claim_username('alice');
+    raise exception 'FAIL: claimed a taken username';
+  exception when unique_violation then null; end;
+  assert public.claim_username('  Gus ') = 'gus', 'FAIL: claim_username normalises and returns the name';
+  assert (select username from public.get_my_profile()) = 'gus', 'FAIL: claimed username not set';
+  begin
+    perform public.claim_username('gus2');
+    raise exception 'FAIL: username claimed twice';
+  exception when insufficient_privilege then null; end;
+  -- username still not directly writable
+  begin
+    update public.users set username = 'gus3' where id = auth.uid();
+    raise exception 'FAIL: username writable';
+  exception when insufficient_privilege then null; end;
+end $$;
+
+-- frank (NULL) is invisible to others and can't make or receive requests
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
+do $$ begin
+  assert (select count(*) from public.users where id = '00000000-0000-0000-0000-00000000000f') = 0,
+    'FAIL: NULL-username user visible to others';
+  assert (select count(*) from public.users where username is null) = 0, 'FAIL: NULL usernames listed';
+  assert (select count(*) from public.search_users('a')) > 0, 'search works';
+  assert not exists (select 1 from public.search_users('a') where username is null), 'FAIL: search returned NULL username';
+  begin
+    insert into public.friendships (requester_id, addressee_id) values (auth.uid(), '00000000-0000-0000-0000-00000000000f');
+    raise exception 'FAIL: request to a NULL-username user';
+  exception when insufficient_privilege then null; end;
+end $$;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000f');
+do $$ begin
+  begin
+    insert into public.friendships (requester_id, addressee_id) values (auth.uid(), pg_temp.uid('alice'));
+    raise exception 'FAIL: request from a NULL-username user';
+  exception when insufficient_privilege then null; end;
+  assert (select count(*) from public.get_friend_badges()) = 0, 'NULL user badges fine';
+  assert ((public.get_my_stats()) ->> 'total_sent')::int = 0, 'NULL user stats fine';
+  assert (select count(*) from public.get_my_phrases()) = 8, 'NULL user phrases fine';
+end $$;
+reset role;
+
+-- even a hand-inserted friendship can't carry ahoys to/from a NULL user
+alter table public.friendships disable trigger friendships_guard_insert;
+insert into public.friendships (requester_id, addressee_id, status)
+values ('00000000-0000-0000-0000-00000000000f', '00000000-0000-0000-0000-00000000000e', 'accepted');
+alter table public.friendships enable trigger friendships_guard_insert;
+set local role service_role;
+do $$
+declare r record;
+begin
+  select * into r from public.record_ahoy('00000000-0000-0000-0000-00000000000f', '00000000-0000-0000-0000-00000000000e');
+  assert r.ok = false and r.reason = 'no_username', 'FAIL: send from NULL user: ' || coalesce(r.reason, 'ok');
+  select * into r from public.record_ahoy('00000000-0000-0000-0000-00000000000e', '00000000-0000-0000-0000-00000000000f');
+  assert r.ok = false and r.reason = 'no_username', 'FAIL: send to NULL user: ' || coalesce(r.reason, 'ok');
+end $$;
+reset role;
+delete from public.friendships where requester_id = '00000000-0000-0000-0000-00000000000f';
 
 -- ---------------------------------------------------------------------------
 -- Private columns + push tokens
@@ -398,6 +500,173 @@ end $$;
 reset role;
 
 -- ---------------------------------------------------------------------------
+-- Invite-link lookups (get_user_card)
+-- ---------------------------------------------------------------------------
+set local role anon;
+do $$ begin
+  begin
+    perform public.get_user_card('alice');
+    raise exception 'FAIL: anon can call get_user_card';
+  exception when insufficient_privilege then null; end;
+end $$;
+reset role;
+
+set local role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
+do $$ begin
+  assert (select relation from public.get_user_card('Bob')) = 'crew', 'FAIL: card crew';
+  assert (select friendship_id from public.get_user_card('bob')) is not null, 'FAIL: crew friendship id';
+  assert (select relation from public.get_user_card('carol')) = 'requested', 'FAIL: decline must look like requested';
+  assert (select relation from public.get_user_card('alice')) = 'self', 'FAIL: card self';
+  assert (select relation from public.get_user_card('gus')) = 'none', 'FAIL: card none';
+  assert (select total_sent from public.get_user_card('bob')) = 1100, 'FAIL: card total';
+  assert not exists (select 1 from public.get_user_card('dave')), 'FAIL: blocked-by-them must look like not found';
+  assert not exists (select 1 from public.get_user_card('nobody_here')), 'FAIL: unknown user';
+  assert not exists (select 1 from public.get_user_card('x;drop')), 'FAIL: invalid name';
+end $$;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000c');
+do $$ begin
+  assert (select relation from public.get_user_card('alice')) = 'incoming', 'FAIL: declined-by-me shows incoming';
+  assert (select relation from public.get_user_card('erin')) = 'requested', 'FAIL: pending outgoing';
+end $$;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000d');
+do $$ begin
+  assert (select relation from public.get_user_card('alice')) = 'blocked', 'FAIL: blocked-by-me';
+  assert (select friendship_id from public.get_user_card('alice')) is null, 'no friendship id when blocked';
+end $$;
+-- unblock: own rows only, friendship does not come back
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
+delete from public.blocks where blocked_id = pg_temp.uid('alice');
+reset role;
+do $$ begin
+  assert (select count(*) from public.blocks) = 1, 'FAIL: alice removed dave''s block';
+end $$;
+set local role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000d');
+do $$ begin
+  assert (select count(*) from public.blocks) = 1, 'dave sees own block';
+  delete from public.blocks where blocked_id = pg_temp.uid('alice');
+  assert (select count(*) from public.blocks) = 0, 'FAIL: dave could not unblock';
+  assert (select relation from public.get_user_card('alice')) = 'none', 'FAIL: unblock should not restore friendship';
+end $$;
+-- re-block so the rest of the file sees the same state
+insert into public.blocks (blocker_id, blocked_id) values (auth.uid(), pg_temp.uid('alice'));
+reset role;
+
+-- ---------------------------------------------------------------------------
+-- Reports
+-- ---------------------------------------------------------------------------
+set local role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000e');
+do $$ begin
+  insert into public.reports (reported_id, note) values (pg_temp.uid('carol'), '  spamming requests  ');
+  begin
+    perform 1 from public.reports;
+    raise exception 'FAIL: reports readable by clients';
+  exception when insufficient_privilege then null; end;
+  begin
+    insert into public.reports (reporter_id, reported_id) values (pg_temp.uid('alice'), pg_temp.uid('carol'));
+    raise exception 'FAIL: report filed as someone else';
+  exception when insufficient_privilege then null; end;
+  begin
+    insert into public.reports (reported_id, notified_at) values (pg_temp.uid('carol'), now());
+    raise exception 'FAIL: notified_at client-writable';
+  exception when insufficient_privilege then null; end;
+  begin
+    insert into public.reports (reported_id) values (auth.uid());
+    raise exception 'FAIL: self report';
+  exception when check_violation then null; end;
+  begin
+    insert into public.reports (reported_id, note) values (pg_temp.uid('carol'), repeat('x', 501));
+    raise exception 'FAIL: 501-char note accepted';
+  exception when check_violation then null; end;
+  begin
+    insert into public.reports (reported_id) values (null);
+    raise exception 'FAIL: report without a target';
+  exception when insufficient_privilege then null; end;
+  begin
+    update public.reports set note = 'edited';
+    raise exception 'FAIL: reports updatable';
+  exception when insufficient_privilege then null; end;
+  begin
+    delete from public.reports;
+    raise exception 'FAIL: reports deletable';
+  exception when insufficient_privilege then null; end;
+  begin
+    perform public.claim_report_notification(auth.uid(), gen_random_uuid());
+    raise exception 'FAIL: authenticated can call claim_report_notification';
+  exception when insufficient_privilege then null; end;
+end $$;
+reset role;
+do $$ begin
+  assert (select note from public.reports where reporter_id = pg_temp.uid('erin')) = 'spamming requests', 'note trimmed';
+  assert (select notified_at from public.reports where reporter_id = pg_temp.uid('erin')) is null, 'not yet notified';
+end $$;
+
+set local role service_role;
+do $$
+declare r record; v_id uuid;
+begin
+  select id into v_id from public.reports where reporter_id = pg_temp.uid('erin');
+  select * into r from public.claim_report_notification(pg_temp.uid('alice'), v_id);
+  assert r.report_id is null, 'FAIL: non-reporter claimed a report';
+  select * into r from public.claim_report_notification(pg_temp.uid('erin'), v_id);
+  assert r.report_id = v_id and r.reporter_username = 'erin' and r.reported_username = 'carol'
+         and r.note = 'spamming requests', 'FAIL: report claim';
+  select * into r from public.claim_report_notification(pg_temp.uid('erin'), v_id);
+  assert r.report_id is null, 'FAIL: report notified twice';
+end $$;
+reset role;
+
+-- 10 per reporter per 24 h (erin has 1)
+set local role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000e');
+do $$
+declare i int;
+begin
+  for i in 1..9 loop
+    insert into public.reports (reported_id) values (pg_temp.uid('carol'));
+  end loop;
+  begin
+    insert into public.reports (reported_id) values (pg_temp.uid('carol'));
+    raise exception 'FAIL: 11th report in a day accepted';
+  exception when raise_exception then
+    assert sqlerrm = 'rate_limited', 'wrong error: ' || sqlerrm;
+  end;
+end $$;
+-- another reporter is unaffected
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000c');
+insert into public.reports (reported_id, note) values (pg_temp.uid('erin'), null);
+reset role;
+-- older reports fall out of the window
+update public.reports set created_at = now() - interval '25 hours' where reporter_id = pg_temp.uid('erin');
+set local role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000e');
+insert into public.reports (reported_id) values (pg_temp.uid('carol'));
+reset role;
+
+-- ---------------------------------------------------------------------------
+-- Feedback: insert-own, user_id defaults to the caller
+-- ---------------------------------------------------------------------------
+set local role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000e');
+do $$ begin
+  insert into public.feedback (version, message) values ('1.0.0 (1) ios', 'Love it');
+  begin
+    insert into public.feedback (user_id, version, message) values (pg_temp.uid('alice'), '1', 'spoofed');
+    raise exception 'FAIL: feedback as someone else';
+  exception when insufficient_privilege then null; end;
+  begin
+    insert into public.feedback (version, message) values ('1', repeat('x', 2001));
+    raise exception 'FAIL: oversized feedback';
+  exception when check_violation then null; end;
+end $$;
+reset role;
+do $$ begin
+  assert (select user_id from public.feedback where message = 'Love it') = pg_temp.uid('erin'), 'FAIL: feedback user_id default';
+end $$;
+
+-- ---------------------------------------------------------------------------
 -- Account deletion cascade
 -- ---------------------------------------------------------------------------
 delete from auth.users where id = '00000000-0000-0000-0000-00000000000b';
@@ -410,6 +679,18 @@ do $$ begin
     'alice sent count survives bob deleting account';
   assert (select count(*) from public.ahoys where sender_id = '00000000-0000-0000-0000-00000000000b') = 0,
     'bob sent ahoys removed';
+end $$;
+
+-- reporter deletes account -> their reports go; reported deletes -> report kept, target nulled
+delete from auth.users where id = '00000000-0000-0000-0000-00000000000e';
+do $$ begin
+  assert (select count(*) from public.reports) = 1, 'FAIL: reporter''s reports should be deleted with them';
+  assert (select reported_id from public.reports) is null, 'FAIL: report about a deleted user should be kept';
+  assert (select count(*) from public.feedback) = 0, 'feedback removed with account';
+end $$;
+delete from auth.users where id = '00000000-0000-0000-0000-00000000000c';
+do $$ begin
+  assert (select count(*) from public.reports) = 0, 'carol''s report removed';
 end $$;
 
 \echo 'ALL RLS CHECKS PASSED'

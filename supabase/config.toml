@@ -444,3 +444,9 @@ enabled = true
 verify_jwt = true
 import_map = "./functions/delete-account/deno.json"
 entrypoint = "./functions/delete-account/index.ts"
+
+[functions.notify-report]
+enabled = true
+verify_jwt = true
+import_map = "./functions/notify-report/deno.json"
+entrypoint = "./functions/notify-report/index.ts"

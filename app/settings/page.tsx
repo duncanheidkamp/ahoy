@@ -69,7 +69,8 @@ export default function SettingsPage() {
         .select('id, username, created_at')
         .in('id', friendIds)
 
-      setFriends(users || [])
+      // Friends always have a username (friendship guard); filter for the type.
+      setFriends((users || []).filter((u): u is User => u.username !== null))
     } catch (error) {
       console.error('Failed to load friends:', error)
     } finally {

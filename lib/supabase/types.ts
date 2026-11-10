@@ -8,7 +8,9 @@ export type Json =
 
 export type FriendshipStatus = 'pending' | 'accepted' | 'declined'
 export type PushPlatform = 'ios' | 'android' | 'web'
-export type SendAhoyFailure = 'not_friends' | 'blocked' | 'rate_limited' | 'invalid_request'
+export type SendAhoyFailure = 'not_friends' | 'blocked' | 'rate_limited' | 'invalid_request' | 'no_username'
+/** get_user_card().relation */
+export type UserRelation = 'self' | 'crew' | 'requested' | 'incoming' | 'blocked' | 'none'
 
 // Hand-maintained to match supabase/migrations. Regenerate with
 //   npx supabase gen types typescript --local > lib/supabase/types.ts
@@ -20,7 +22,8 @@ export interface Database {
       users: {
         Row: {
           id: string
-          username: string
+          /** null for a social-login account that hasn't picked one yet (claim_username) */
+          username: string | null
           /** Private: not readable by other users (column privileges). */
           fcm_token: string | null
           created_at: string
@@ -29,14 +32,14 @@ export interface Database {
         }
         Insert: {
           id: string
-          username: string
+          username?: string | null
           fcm_token?: string | null
           created_at?: string
           active_phrase_id?: number
         }
         Update: {
           id?: string
-          username?: string
+          username?: string | null
           fcm_token?: string | null
           created_at?: string
           active_phrase_id?: number
@@ -162,7 +165,8 @@ export interface Database {
         }
         Insert: {
           id?: string
-          user_id: string
+          /** defaults to auth.uid() */
+          user_id?: string
           version: string
           message: string
           created_at?: string
@@ -251,6 +255,40 @@ export interface Database {
           }
         ]
       }
+      /** insert-own (id, reported_id, note only); no client select */
+      reports: {
+        Row: {
+          id: string
+          reporter_id: string
+          /** null once the reported user deleted their account */
+          reported_id: string | null
+          note: string | null
+          created_at: string
+          notified_at: string | null
+        }
+        Insert: {
+          id?: string
+          reported_id: string
+          note?: string | null
+        }
+        Update: {
+          [_ in never]: never
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'reports_reporter_id_fkey'
+            columns: ['reporter_id']
+            referencedRelation: 'users'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'reports_reported_id_fkey'
+            columns: ['reported_id']
+            referencedRelation: 'users'
+            referencedColumns: ['id']
+          }
+        ]
+      }
       phrases: {
         Row: {
           id: number
@@ -304,7 +342,8 @@ export interface Database {
         Args: never
         Returns: {
           id: string
-          username: string
+          /** null until claim_username() */
+          username: string | null
           created_at: string
           active_phrase_id: number
           active_phrase: string
@@ -321,6 +360,20 @@ export interface Database {
           sort: number
           unlocked: boolean
           active: boolean
+        }[]
+      }
+      claim_username: {
+        Args: { p_username: string }
+        Returns: string
+      }
+      get_user_card: {
+        Args: { p_username: string }
+        Returns: {
+          id: string
+          username: string
+          total_sent: number
+          relation: UserRelation
+          friendship_id: string | null
         }[]
       }
       set_active_phrase: {
@@ -367,6 +420,18 @@ export interface Database {
           actor_username: string | null
         }[]
       }
+      /** service_role only — used by the notify-report Edge Function */
+      claim_report_notification: {
+        Args: { p_caller: string; p_report_id: string }
+        Returns: {
+          report_id: string
+          reporter_username: string | null
+          reported_id: string | null
+          reported_username: string | null
+          note: string | null
+          created_at: string
+        }[]
+      }
     }
     Enums: {
       friendship_status: FriendshipStatus
@@ -379,8 +444,12 @@ export interface Database {
 
 // Helper types
 export type UserRow = Database['public']['Tables']['users']['Row']
-/** The columns any signed-in user can read about another user. */
-export type User = Pick<UserRow, 'id' | 'username' | 'created_at'>
+/**
+ * The columns any signed-in user can read about ANOTHER user. Other users are
+ * only visible once they have a username (users select policy), so it is
+ * non-null here; only your own row (get_my_profile) can have username null.
+ */
+export type User = Pick<UserRow, 'id' | 'created_at'> & { username: string }
 /** Comma-separated column list matching `User`, for .select(). Never use '*' on users. */
 export const PUBLIC_USER_COLUMNS = 'id, username, created_at' as const
 export type Friendship = Database['public']['Tables']['friendships']['Row']
@@ -405,6 +474,8 @@ export type Feedback = Database['public']['Tables']['feedback']['Row']
 export type Phrase = Database['public']['Functions']['get_my_phrases']['Returns'][number]
 export type PushToken = Database['public']['Tables']['push_tokens']['Row']
 export type Block = Database['public']['Tables']['blocks']['Row']
+export type Report = Database['public']['Tables']['reports']['Row']
+export type UserCard = Database['public']['Functions']['get_user_card']['Returns'][number]
 
 export interface MyStats {
   total_sent: number

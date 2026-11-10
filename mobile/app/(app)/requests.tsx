@@ -13,12 +13,15 @@ import {
 } from '@/lib/queries'
 import { colors, radii, spacing, type } from '@/theme'
 
-function RequestItem({ request, children }: { request: FriendRequestRow; children: ReactNode }) {
+function RequestItem({ request, note, children }: { request: FriendRequestRow; note?: string; children: ReactNode }) {
   return (
     <View style={styles.item}>
-      <Text style={styles.name} numberOfLines={1}>
-        @{request.other.username}
-      </Text>
+      <View style={styles.nameBox}>
+        <Text style={styles.name} numberOfLines={1}>
+          @{request.other.username}
+        </Text>
+        {note ? <Text style={styles.note}>{note}</Text> : null}
+      </View>
       <View style={styles.actions}>{children}</View>
     </View>
   )
@@ -30,14 +33,14 @@ export default function RequestsScreen() {
   const requests = useRequests(userId)
   const accept = useAcceptRequest()
   const decline = useDeclineRequest()
-  const cancel = useCancelRequest()
+  const cancel = useCancelRequest(userId)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
 
-  const run = async (id: string, action: (id: string) => Promise<void>) => {
+  const run = async <T,>(id: string, action: (arg: T) => Promise<void>, arg: T) => {
     setBusyId(id)
     try {
-      await action(id)
+      await action(arg)
     } catch {
       toast('Lost at sea — try again')
     } finally {
@@ -81,7 +84,7 @@ export default function RequestsScreen() {
                 accessibilityLabel={`Accept @${r.other.username}`}
                 loading={busyId === r.id && accept.isPending}
                 disabled={busyId === r.id}
-                onPress={() => run(r.id, accept.mutateAsync)}
+                onPress={() => run(r.id, accept.mutateAsync, r.id)}
               />
               <Button
                 compact
@@ -90,7 +93,7 @@ export default function RequestsScreen() {
                 accessibilityLabel={`Decline @${r.other.username}`}
                 loading={busyId === r.id && decline.isPending}
                 disabled={busyId === r.id}
-                onPress={() => run(r.id, decline.mutateAsync)}
+                onPress={() => run(r.id, decline.mutateAsync, r.id)}
               />
             </RequestItem>
           ))
@@ -103,14 +106,15 @@ export default function RequestsScreen() {
           <MutedText>No requests waiting on others.</MutedText>
         ) : (
           outgoing.map((r) => (
-            <RequestItem key={r.id} request={r}>
+            // Declined requests look exactly like pending ones here.
+            <RequestItem key={r.id} request={r} note="Request sent">
               <Button
                 compact
                 variant="secondary"
                 title="Cancel"
                 accessibilityLabel={`Cancel request to @${r.other.username}`}
                 loading={busyId === r.id}
-                onPress={() => run(r.id, cancel.mutateAsync)}
+                onPress={() => run(r.id, cancel.mutateAsync, r)}
               />
             </RequestItem>
           ))
@@ -134,6 +138,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceRaised,
     borderRadius: radii.md,
   },
-  name: { ...type.bodyBold, color: colors.text, flexShrink: 1 },
+  nameBox: { flexShrink: 1, gap: spacing.xs },
+  name: { ...type.bodyBold, color: colors.text },
+  note: { ...type.small, color: colors.textMuted },
   actions: { flexDirection: 'row', gap: spacing.sm },
 })

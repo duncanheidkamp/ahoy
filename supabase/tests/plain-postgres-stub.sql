@@ -20,8 +20,12 @@ create table if not exists auth.users (
   id uuid primary key default gen_random_uuid(),
   email text,
   raw_user_meta_data jsonb default '{}'::jsonb,
+  raw_app_meta_data jsonb default '{}'::jsonb,
   created_at timestamptz default now()
 );
+
+-- Older copies of this stub created auth.users without it.
+alter table auth.users add column if not exists raw_app_meta_data jsonb default '{}'::jsonb;
 
 create or replace function auth.uid() returns uuid language sql stable as $$
   select nullif(

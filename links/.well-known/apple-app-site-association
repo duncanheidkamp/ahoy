@@ -1,0 +1,17 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": [
+          "TEAMID.com.duncanheidkamp.ahoy"
+        ],
+        "components": [
+          {
+            "/": "/add/*",
+            "comment": "Invite links: /add/<username>"
+          }
+        ]
+      }
+    ]
+  }
+}
