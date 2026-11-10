@@ -8,6 +8,7 @@ import { useToast } from '@/components/toast'
 import { Button, Centered, Loading, MutedText } from '@/components/ui'
 import { useUserId } from '@/lib/auth'
 import { INVITE_BASE_URL } from '@/lib/env'
+import { usePrePromptOffer } from '@/lib/push/use-push'
 import { useCrew, useProfile, useRequests } from '@/lib/queries'
 import { colors, minTouch, radii, spacing, type } from '@/theme'
 
@@ -43,6 +44,9 @@ export default function CrewScreen() {
 
   const phrase = profile.data?.activePhrase ?? DEFAULT_PHRASE
   const incomingCount = requests.data?.incoming.length ?? 0
+
+  // Notification pre-prompt once the first crewmate is aboard (not at signup).
+  usePrePromptOffer(crew.length)
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true)
