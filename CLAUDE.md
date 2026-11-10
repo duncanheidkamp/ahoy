@@ -44,6 +44,7 @@ npx supabase link --project-ref <ref>
 npx supabase db push                     # apply new migrations
 npx supabase functions deploy send-ahoy
 npx supabase functions deploy delete-account
+npx supabase functions deploy notify-friendship
 npx supabase secrets set FCM_SERVICE_ACCOUNT="$(cat service-account.json)" EXPO_ACCESS_TOKEN=...
 ```
 
@@ -143,7 +144,7 @@ ahoy/
 ├── supabase/
 │   ├── config.toml
 │   ├── migrations/       # THE schema — one file per change
-│   ├── functions/        # Edge Functions (Deno): send-ahoy, delete-account
+│   ├── functions/        # Edge Functions (Deno): send-ahoy, notify-friendship, delete-account; _tests/
 │   └── tests/            # rls_test.sql + plain-postgres stub
 ├── database-schema.sql   # Pointer to supabase/migrations
 ├── proxy.ts              # Auth proxy (Next 16 middleware)
@@ -163,6 +164,7 @@ Source of truth: `supabase/migrations/`. Summary:
 | phrases | id, text, unlock_at, secret, sort. Secret phrases are hidden until unlocked. |
 | push_tokens | per-device tokens (ios/android = Expo, web = FCM), owner-only. Register with `register_push_token()`. |
 | feedback | in-app feedback, insert-own. |
+| friendship_notifications | log of friend-request/accepted pushes; **no client access**. Written only by `claim_friendship_notification()`. |
 
 Key functions (all `security definer`, `search_path = ''`):
 
@@ -174,11 +176,15 @@ Key functions (all `security definer`, `search_path = ''`):
 | `search_users(q)` | authenticated | username search with totals, hides blocks |
 | `get_my_profile()` / `get_my_phrases()` / `set_active_phrase(id)` | authenticated | own profile + phrase picker |
 | `username_available(name)` | anon | signup check |
+| `claim_friendship_notification(caller, friendship)` | service_role | decides from the row's current state whether a friend push is due (pending+requester → `request` to addressee; accepted+addressee → `accepted` to requester); once per row+kind, 24h per-pair cooldown, 20 requests/h per requester, no push across blocks |
 
 ## Edge Functions
 
-- `send-ahoy` — `POST { receiver_id }` with the user's JWT. Calls `record_ahoy()`, then pushes to every receiver device via Expo (title = phrase, body = `@username`, `categoryId: 'ahoy'`, `channelId: 'ahoy-v1'`, `sound: 'ahoy.wav'`) and to the legacy FCM web token (needs `FCM_SERVICE_ACCOUNT` secret). Deletes tokens reported `DeviceNotRegistered`/`UNREGISTERED`. Errors: 401, 400, 403 `not_friends`, 429 `rate_limited`.
+- `send-ahoy` — `POST { receiver_id }` with the user's JWT. Calls `record_ahoy()`, then pushes to every receiver device via Expo (title = phrase, body = `@username`, `categoryId: 'ahoy'`, `channelId: 'ahoy-v1'`, `sound: 'ahoy.wav'`, `threadId: 'ahoy-<senderId>'`, `data: { type: 'ahoy', senderId, senderUsername }`, no badge/collapseId) and to the legacy FCM web token (needs `FCM_SERVICE_ACCOUNT` secret). Deletes tokens reported `DeviceNotRegistered`/`UNREGISTERED`. Errors: 401, 400, 403 `not_friends`, 429 `rate_limited`.
+- `notify-friendship` — `POST { friendship_id }` with the user's JWT, called by the native app after creating or accepting a request. `claim_friendship_notification()` decides; pushes "@x wants to join your crew" (`data.type: 'friend_request'`) or "@x joined your crew" (`'friend_accepted'`) on channel `requests-v1`. Repeats are 200 no-ops.
 - `delete-account` — `POST` with the user's JWT; deletes the auth user, schema cascades the rest.
+
+Tests (mocked fetch / injected deps): `deno test --config supabase/functions/_tests/deno.json --allow-env supabase/functions/_tests`.
 
 The PWA still sends through `app/api/ahoys/send` (same `record_ahoy()` rules, firebase-admin for FCM + Expo for native receivers).
 
@@ -243,6 +249,12 @@ development build via `expo-dev-client`). It has its own package.json and
 lint/test setup — see `mobile/README.md`; the root tsconfig/eslint exclude it.
 `mobile/lib/types.ts` is a copy of `lib/supabase/types.ts`: update both on a
 schema change. Colors/type live only in `mobile/theme.ts`.
+
+Push (Phase 3) lives in `mobile/lib/push/`; setup, credentials, per-platform
+"Ahoy back!" behavior and how to replace the placeholder `ahoy.wav` are in
+`mobile/README.md` → Push notifications. Channel ids / category / sound names
+are duplicated in `mobile/lib/push/constants.ts`,
+`supabase/functions/_shared/push.ts` and `lib/push/expo.ts` — change together.
 
 ## Deployment
 
