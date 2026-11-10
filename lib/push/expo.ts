@@ -44,7 +44,9 @@ export async function sendExpoPushes(tokens: string[], push: AhoyPush): Promise<
       categoryId: 'ahoy',
       channelId: 'ahoy-v1',
       priority: 'high',
-      data: { senderId: push.senderId, senderUsername: push.senderUsername },
+      // Per-sender visual grouping on iOS; never collapseId/tag/badge.
+      threadId: `ahoy-${push.senderId}`,
+      data: { type: 'ahoy', senderId: push.senderId, senderUsername: push.senderUsername },
     }))
 
     try {

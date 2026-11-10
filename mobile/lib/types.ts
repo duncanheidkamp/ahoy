@@ -123,6 +123,40 @@ export interface Database {
           }
         ]
       }
+      /** service_role only (no client privileges) */
+      friendship_notifications: {
+        Row: {
+          id: number
+          friendship_id: string
+          kind: 'request' | 'accepted'
+          actor_id: string
+          recipient_id: string
+          pair_low: string
+          pair_high: string
+          created_at: string
+        }
+        Insert: {
+          id?: never
+          friendship_id: string
+          kind: 'request' | 'accepted'
+          actor_id: string
+          recipient_id: string
+          pair_low: string
+          pair_high: string
+          created_at?: string
+        }
+        Update: {
+          id?: never
+          friendship_id?: string
+          kind?: 'request' | 'accepted'
+          actor_id?: string
+          recipient_id?: string
+          pair_low?: string
+          pair_high?: string
+          created_at?: string
+        }
+        Relationships: []
+      }
       feedback: {
         Row: {
           id: string
@@ -325,6 +359,17 @@ export interface Database {
           ahoy_id: string | null
           phrase: string | null
           sender_username: string | null
+        }[]
+      }
+      /** service_role only — used by the notify-friendship Edge Function */
+      claim_friendship_notification: {
+        Args: { p_caller: string; p_friendship_id: string }
+        Returns: {
+          ok: boolean
+          reason: 'invalid_request' | 'not_found' | 'not_notifiable' | 'already_notified' | 'rate_limited' | null
+          kind: 'request' | 'accepted' | null
+          recipient_id: string | null
+          actor_username: string | null
         }[]
       }
     }

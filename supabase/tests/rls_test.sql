@@ -107,6 +107,27 @@ end $$;
 reset role;
 update public.push_tokens set user_id = '00000000-0000-0000-0000-00000000000b';
 
+-- logout: a device deletes its own token row (plain RLS delete, no RPC);
+-- nobody can delete someone else's
+set local role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
+delete from public.push_tokens where token = 'ExponentPushToken[bob-phone]';
+reset role;
+do $$ begin
+  assert (select count(*) from public.push_tokens) = 1, 'FAIL: alice deleted bob''s push token';
+end $$;
+set local role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
+delete from public.push_tokens where token = 'ExponentPushToken[bob-phone]';
+reset role;
+do $$ begin
+  assert (select count(*) from public.push_tokens) = 0, 'FAIL: bob could not delete own push token';
+end $$;
+set local role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
+select public.register_push_token('ExponentPushToken[bob-phone]', 'ios', 'Bob iPhone');
+reset role;
+
 -- ---------------------------------------------------------------------------
 -- Friendships
 -- ---------------------------------------------------------------------------
@@ -276,6 +297,103 @@ begin
   end loop;
   select * into r from public.record_ahoy(pg_temp.uid('alice'), pg_temp.uid('bob'));
   assert r.ok = false and r.reason = 'rate_limited', 'FAIL: rate limit not enforced';
+end $$;
+reset role;
+
+-- ---------------------------------------------------------------------------
+-- Friend-request push claims (notify-friendship Edge Function)
+-- ---------------------------------------------------------------------------
+create function pg_temp.fid(p_req text, p_addr text) returns uuid language sql as $$
+  select id from public.friendships
+  where requester_id = pg_temp.uid(p_req) and addressee_id = pg_temp.uid(p_addr);
+$$;
+
+-- erin asks alice; carol asks erin
+set local role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000e');
+insert into public.friendships (requester_id, addressee_id) values (auth.uid(), pg_temp.uid('alice'));
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000c');
+insert into public.friendships (requester_id, addressee_id) values (auth.uid(), pg_temp.uid('erin'));
+do $$ begin
+  begin
+    perform public.claim_friendship_notification(auth.uid(), pg_temp.fid('carol', 'erin'));
+    raise exception 'FAIL: authenticated can call claim_friendship_notification';
+  exception when insufficient_privilege then null; end;
+  begin
+    perform 1 from public.friendship_notifications;
+    raise exception 'FAIL: friendship_notifications readable by clients';
+  exception when insufficient_privilege then null; end;
+end $$;
+reset role;
+
+set local role service_role;
+do $$
+declare r record;
+begin
+  -- request: only the requester, only while pending, only once
+  select * into r from public.claim_friendship_notification(pg_temp.uid('alice'), pg_temp.fid('erin', 'alice'));
+  assert r.ok = false and r.reason = 'not_notifiable', 'FAIL: addressee triggered request push: ' || coalesce(r.reason, 'ok');
+  select * into r from public.claim_friendship_notification(pg_temp.uid('bob'), pg_temp.fid('erin', 'alice'));
+  assert r.ok = false and r.reason = 'not_found', 'FAIL: outsider triggered push: ' || coalesce(r.reason, 'ok');
+  select * into r from public.claim_friendship_notification(pg_temp.uid('erin'), gen_random_uuid());
+  assert r.ok = false and r.reason = 'not_found', 'FAIL: unknown friendship';
+  select * into r from public.claim_friendship_notification(pg_temp.uid('erin'), pg_temp.fid('erin', 'alice'));
+  assert r.ok and r.kind = 'request' and r.recipient_id = pg_temp.uid('alice') and r.actor_username = 'erin',
+    'FAIL: request push: ' || coalesce(r.reason, 'ok');
+  select * into r from public.claim_friendship_notification(pg_temp.uid('erin'), pg_temp.fid('erin', 'alice'));
+  assert r.ok = false and r.reason = 'already_notified', 'FAIL: request push repeated';
+
+  -- declined rows never notify
+  select * into r from public.claim_friendship_notification(pg_temp.uid('alice'), pg_temp.fid('alice', 'carol'));
+  assert r.ok = false and r.reason = 'not_notifiable', 'FAIL: declined row notified';
+
+  -- cancel + re-send creates a new row but stays inside the 24h pair cooldown
+  select * into r from public.claim_friendship_notification(pg_temp.uid('carol'), pg_temp.fid('carol', 'erin'));
+  assert r.ok and r.recipient_id = pg_temp.uid('erin'), 'FAIL: carol request push';
+end $$;
+reset role;
+
+set local role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000c');
+delete from public.friendships where requester_id = auth.uid() and addressee_id = pg_temp.uid('erin');
+insert into public.friendships (requester_id, addressee_id) values (auth.uid(), pg_temp.uid('erin'));
+-- alice accepts erin
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
+update public.friendships set status = 'accepted' where requester_id = pg_temp.uid('erin');
+reset role;
+
+set local role service_role;
+do $$
+declare r record;
+begin
+  select * into r from public.claim_friendship_notification(pg_temp.uid('carol'), pg_temp.fid('carol', 'erin'));
+  assert r.ok = false and r.reason = 'already_notified', 'FAIL: re-sent request re-notified: ' || coalesce(r.reason, 'ok');
+
+  -- accepted: only the addressee (the one who accepted), once
+  select * into r from public.claim_friendship_notification(pg_temp.uid('erin'), pg_temp.fid('erin', 'alice'));
+  assert r.ok = false and r.reason = 'not_notifiable', 'FAIL: requester triggered accepted push';
+  select * into r from public.claim_friendship_notification(pg_temp.uid('alice'), pg_temp.fid('erin', 'alice'));
+  assert r.ok and r.kind = 'accepted' and r.recipient_id = pg_temp.uid('erin') and r.actor_username = 'alice',
+    'FAIL: accepted push: ' || coalesce(r.reason, 'ok');
+  select * into r from public.claim_friendship_notification(pg_temp.uid('alice'), pg_temp.fid('erin', 'alice'));
+  assert r.ok = false and r.reason = 'already_notified', 'FAIL: accepted push repeated';
+end $$;
+reset role;
+
+-- hourly cap: erin has 1 request push this hour; fake 19 more, the 21st is refused
+insert into public.friendship_notifications (friendship_id, kind, actor_id, recipient_id, pair_low, pair_high)
+select gen_random_uuid(), 'request', pg_temp.uid('erin'), pg_temp.uid('alice'), gen_random_uuid(), gen_random_uuid()
+from generate_series(1, 19);
+set local role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000e');
+insert into public.friendships (requester_id, addressee_id) values (auth.uid(), pg_temp.uid('bob'));
+reset role;
+set local role service_role;
+do $$
+declare r record;
+begin
+  select * into r from public.claim_friendship_notification(pg_temp.uid('erin'), pg_temp.fid('erin', 'bob'));
+  assert r.ok = false and r.reason = 'rate_limited', 'FAIL: hourly request cap: ' || coalesce(r.reason, 'ok');
 end $$;
 reset role;
 

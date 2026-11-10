@@ -433,6 +433,12 @@ verify_jwt = true
 import_map = "./functions/send-ahoy/deno.json"
 entrypoint = "./functions/send-ahoy/index.ts"
 
+[functions.notify-friendship]
+enabled = true
+verify_jwt = true
+import_map = "./functions/notify-friendship/deno.json"
+entrypoint = "./functions/notify-friendship/index.ts"
+
 [functions.delete-account]
 enabled = true
 verify_jwt = true
