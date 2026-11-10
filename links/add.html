@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Join my crew on Ahoy!</title>
+  <meta name="description" content="Someone wants you in their crew on Ahoy, the one-tap pirate hail.">
+  <meta property="og:title" content="Join my crew on Ahoy!">
+  <meta property="og:description" content="One tap. One Ahoy. Add me and hail back.">
+  <meta name="robots" content="noindex">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <!--
+    Fallback for https://<links domain>/add/<username> (vercel.json rewrites
+    /add/* here). With the app installed, iOS universal links / Android App
+    Links open the app directly and this page is never shown.
+    Store / TestFlight URLs are placeholders until the apps are listed.
+  -->
+  <main>
+    <h1>Ahoy!</h1>
+    <p class="muted">You've been invited aboard.</p>
+
+    <div class="card">
+      <div class="muted">Join the crew of</div>
+      <div class="username" id="username">@sailor</div>
+    </div>
+
+    <a class="button primary" id="open" href="ahoy://">Open in Ahoy</a>
+
+    <p class="muted">Don't have the app yet?</p>
+    <a class="button secondary" id="appstore" href="#" aria-disabled="true">App Store (coming soon)</a>
+    <a class="button secondary" id="testflight" href="#" aria-disabled="true">TestFlight beta (coming soon)</a>
+    <a class="button secondary" id="play" href="#" aria-disabled="true">Google Play (coming soon)</a>
+
+    <p class="muted">After installing, tap this link again to add them.</p>
+
+    <footer class="muted"><a href="/privacy">Privacy policy</a></footer>
+  </main>
+  <script>
+    // Replace these when the apps are listed (empty = shown as "coming soon").
+    var STORE_LINKS = {
+      appstore: '', // e.g. https://apps.apple.com/app/id0000000000
+      testflight: '', // e.g. https://testflight.apple.com/join/XXXXXXXX
+      play: '' // e.g. https://play.google.com/store/apps/details?id=com.duncanheidkamp.ahoy
+    };
+
+    // Same rule as the app and database: 3-20 of a-z 0-9 _ (lowercased).
+    var match = /^\/add\/([^/?#]+)\/?$/.exec(location.pathname);
+    var raw = match ? decodeURIComponent(match[1]).trim().toLowerCase() : '';
+    var name = /^[a-z0-9_]{3,20}$/.test(raw) ? raw : '';
+
+    if (name) {
+      document.getElementById('username').textContent = '@' + name;
+      document.getElementById('open').href = 'ahoy://add/' + encodeURIComponent(name);
+      document.title = 'Join @' + name + "'s crew on Ahoy!";
+    } else {
+      document.getElementById('username').textContent = 'a fellow sailor';
+    }
+
+    Object.keys(STORE_LINKS).forEach(function (id) {
+      var url = STORE_LINKS[id];
+      var el = document.getElementById(id);
+      if (url) {
+        el.href = url;
+        el.removeAttribute('aria-disabled');
+        el.textContent = el.textContent.replace(' (coming soon)', '');
+      }
+    });
+  </script>
+</body>
+</html>
