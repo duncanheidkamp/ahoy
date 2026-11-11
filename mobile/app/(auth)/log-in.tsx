@@ -1,14 +1,15 @@
 import { Link } from 'expo-router'
 import { useState } from 'react'
-import { StyleSheet, Text, View } from 'react-native'
+import { Text, View } from 'react-native'
 
 import { FormScreen } from '@/components/screen'
 import { SocialAuthSlot } from '@/components/social-auth-slot'
 import { Button, TextField } from '@/components/ui'
 import { supabase } from '@/lib/supabase'
-import { colors, minTouch, spacing, type } from '@/theme'
+import { createStyles, maxFontScale, minTouch, spacing, type } from '@/theme'
 
 export default function LogInScreen() {
+  const styles = useStyles()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -24,14 +25,14 @@ export default function LogInScreen() {
       setError(
         authError.message.toLowerCase().includes('email not confirmed')
           ? 'Check your email to confirm your account first'
-          : 'Wrong email or password'
+          : 'Wrong email or password — try again'
       )
     }
   }
 
   return (
     <FormScreen>
-      <Text accessibilityRole="header" style={styles.title}>
+      <Text accessibilityRole="header" style={styles.title} maxFontSizeMultiplier={maxFontScale.display}>
         Ahoy!
       </Text>
       <Text style={styles.subtitle}>Log in to hail your crew</Text>
@@ -77,11 +78,11 @@ export default function LogInScreen() {
   )
 }
 
-const styles = StyleSheet.create({
-  title: { ...type.title, color: colors.accent, textAlign: 'center' },
-  subtitle: { ...type.body, color: colors.textMuted, textAlign: 'center', marginBottom: spacing.md },
-  error: { ...type.body, color: colors.dangerText },
+const useStyles = createStyles((c) => ({
+  title: { ...type.title, fontSize: 64, color: c.accent, textAlign: 'center' },
+  subtitle: { ...type.body, color: c.textMuted, textAlign: 'center', marginBottom: spacing.md },
+  error: { ...type.body, color: c.dangerText },
   footer: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: spacing.sm },
-  footerText: { ...type.body, color: colors.textMuted },
-  link: { ...type.bodyBold, color: colors.primary, minHeight: minTouch, paddingVertical: spacing.md },
-})
+  footerText: { ...type.body, color: c.textMuted },
+  link: { ...type.bodyBold, color: c.link, minHeight: minTouch, paddingVertical: spacing.md, textDecorationLine: 'underline' },
+}))

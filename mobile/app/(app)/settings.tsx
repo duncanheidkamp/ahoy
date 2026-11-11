@@ -1,12 +1,13 @@
 import { router } from 'expo-router'
 import { useEffect, useState } from 'react'
-import { AppState, Linking, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native'
+import { AppState, Linking, Pressable, ScrollView, Share, Text, View } from 'react-native'
 
 import { useToast } from '@/components/toast'
-import { Button, Loading, MutedText, SectionTitle, TextField } from '@/components/ui'
+import { Button, CardSkeleton, ErrorText, LinkText, MutedText, SectionTitle, TextField } from '@/components/ui'
 import { appVersionLabel } from '@/lib/app-version'
 import { useUserId } from '@/lib/auth'
 import { LINKS_DOMAIN } from '@/lib/env'
+import { legalLinks } from '@/lib/legal'
 import { inviteMessage, inviteUrl } from '@/lib/links'
 import { phraseItems, remainingLabel } from '@/lib/phrases'
 import { getPermission, registrationDeps, requestPermission } from '@/lib/push/native'
@@ -23,7 +24,7 @@ import {
 } from '@/lib/queries'
 import { FEEDBACK_MAX } from '@/lib/reports'
 import { googleSignOut } from '@/lib/social-auth-native'
-import { colors, minTouch, radii, spacing, type } from '@/theme'
+import { createStyles, minTouch, radii, spacing, type } from '@/theme'
 
 const SETTING_LABEL: Record<NotificationSetting, string> = {
   on: 'On',
@@ -51,6 +52,7 @@ function useNotificationSetting() {
 }
 
 function NotificationsRow() {
+  const styles = useStyles()
   const userId = useUserId()
   const toast = useToast()
   const [setting, setSetting] = useNotificationSetting()
@@ -93,6 +95,7 @@ function NotificationsRow() {
 }
 
 function BlockedSection() {
+  const styles = useStyles()
   const toast = useToast()
   const blocked = useBlockedUsers()
   const unblock = useUnblockUser()
@@ -101,11 +104,11 @@ function BlockedSection() {
     <View style={styles.section}>
       <SectionTitle>Blocked sailors</SectionTitle>
       {blocked.isLoading ? (
-        <Loading />
+        <CardSkeleton count={1} />
       ) : blocked.isError ? (
-        <MutedText>Couldn&apos;t load your blocked list.</MutedText>
+        <MutedText align="left">Lost at sea — couldn&apos;t load your blocked list. Try again later.</MutedText>
       ) : (blocked.data ?? []).length === 0 ? (
-        <MutedText>No one. Long-press a crewmate to block or report them.</MutedText>
+        <MutedText align="left">Clear waters — no one. Long-press a crewmate to block or report them.</MutedText>
       ) : (
         (blocked.data ?? []).map((b) => (
           <View key={b.id} style={styles.row}>
@@ -129,6 +132,7 @@ function BlockedSection() {
 
 /** The PWA's v0.4 "message in a bottle" feedback box. */
 function FeedbackSection() {
+  const styles = useStyles()
   const userId = useUserId()
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
@@ -145,7 +149,7 @@ function FeedbackSection() {
       setSent(true)
       setMessage('')
     } catch {
-      setError('Couldn’t send — try again')
+      setError('Lost at sea — your message didn’t send. Try again.')
     } finally {
       setBusy(false)
     }
@@ -169,7 +173,7 @@ function FeedbackSection() {
             style={styles.feedback}
             textAlignVertical="top"
           />
-          {error && <Text style={styles.error}>{error}</Text>}
+          {error && <ErrorText>{error}</ErrorText>}
           <Button title="Send" variant="secondary" onPress={submit} loading={busy} disabled={!trimmed} />
         </>
       )}
@@ -179,6 +183,7 @@ function FeedbackSection() {
 }
 
 export default function SettingsScreen() {
+  const styles = useStyles()
   const toast = useToast()
   const profile = useProfile()
   const phrases = usePhrases()
@@ -225,11 +230,11 @@ export default function SettingsScreen() {
 
       <View style={styles.section}>
         <SectionTitle>Your call</SectionTitle>
-        <MutedText>What your crew sees when you hail them. Send more ahoys to unlock more.</MutedText>
+        <MutedText align="left">What your crew sees when you hail them. Send more ahoys to unlock more.</MutedText>
         {phrases.isLoading ? (
-          <Loading />
+          <CardSkeleton count={3} />
         ) : phrases.isError ? (
-          <MutedText>Couldn&apos;t load phrases.</MutedText>
+          <MutedText align="left">Lost at sea — couldn&apos;t load your calls. Try again later.</MutedText>
         ) : (
           <View accessibilityRole="radiogroup" style={styles.phraseList}>
             {items.map((p) => {
@@ -249,7 +254,7 @@ export default function SettingsScreen() {
                     pressed && styles.pressed,
                   ]}
                 >
-                  <Text style={[styles.phraseText, selected && styles.phraseTextSelected]}>
+                  <Text style={[styles.phraseText, !p.unlocked && styles.phraseTextLocked, selected && styles.phraseTextSelected]}>
                     {p.unlocked ? '' : '🔒 '}
                     {p.text}
                   </Text>
@@ -273,23 +278,23 @@ export default function SettingsScreen() {
         <SectionTitle>Leave the ship</SectionTitle>
         <Button title="Log out" variant="secondary" onPress={logOut} loading={loggingOut} />
         <Button title="Delete account" variant="danger" onPress={() => router.push('/delete-account')} />
-        <Text
-          accessibilityRole="link"
-          style={styles.link}
-          onPress={() => Linking.openURL(`https://${LINKS_DOMAIN}/privacy`).catch(() => {})}
-        >
-          Privacy policy
-        </Text>
+        <View style={styles.legal}>
+          {legalLinks(LINKS_DOMAIN).map((l) => (
+            <LinkText key={l.url} accessibilityLabel={l.label} onPress={() => Linking.openURL(l.url).catch(() => {})}>
+              {l.label}
+            </LinkText>
+          ))}
+        </View>
       </View>
     </ScrollView>
   )
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
+const useStyles = createStyles((c) => ({
+  container: { flex: 1, backgroundColor: c.background },
   content: { padding: spacing.lg, gap: spacing.xl },
   section: { gap: spacing.sm },
-  username: { ...type.heading, color: colors.text },
+  username: { ...type.row, fontSize: 22, color: c.text },
   phraseList: { gap: spacing.sm },
   phrase: {
     minHeight: minTouch + 4,
@@ -298,17 +303,19 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
-    backgroundColor: colors.surfaceRaised,
+    backgroundColor: c.surfaceRaised,
     borderRadius: radii.md,
     borderWidth: 2,
-    borderColor: colors.surfaceRaised,
+    borderColor: c.surfaceRaised,
   },
-  phraseSelected: { borderColor: colors.primary, backgroundColor: colors.primary },
-  phraseLocked: { opacity: 0.55 },
+  phraseSelected: { borderColor: c.primary, backgroundColor: c.primary },
+  // Locked: dashed outline + muted text (not opacity, which would drop contrast below 4.5:1).
+  phraseLocked: { backgroundColor: c.background, borderColor: c.border, borderStyle: 'dashed' },
+  phraseTextLocked: { color: c.textMuted },
   pressed: { opacity: 0.8 },
-  phraseText: { ...type.bodyBold, color: colors.text },
-  phraseTextSelected: { color: colors.primaryText },
-  phraseMeta: { ...type.small, color: colors.textMuted },
+  phraseText: { ...type.bodyBold, color: c.text },
+  phraseTextSelected: { color: c.primaryText },
+  phraseMeta: { ...type.small, color: c.textMuted },
   row: {
     minHeight: minTouch + 4,
     flexDirection: 'row',
@@ -317,13 +324,13 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
-    backgroundColor: colors.surfaceRaised,
+    backgroundColor: c.surfaceRaised,
     borderRadius: radii.md,
   },
-  rowText: { ...type.bodyBold, color: colors.text, flexShrink: 1 },
+  rowText: { ...type.bodyBold, color: c.text, flexShrink: 1 },
   feedback: { minHeight: 96 },
-  sent: { ...type.bodyBold, color: colors.success, textAlign: 'center', paddingVertical: spacing.md },
-  error: { ...type.small, color: colors.dangerText },
-  version: { ...type.small, color: colors.textMuted, textAlign: 'center' },
-  link: { ...type.bodyBold, color: colors.primary, textAlign: 'center', minHeight: minTouch, paddingVertical: spacing.md },
-})
+  sent: { ...type.bodyBold, color: c.success, textAlign: 'center', paddingVertical: spacing.md },
+  error: { ...type.small, color: c.dangerText },
+  version: { ...type.small, color: c.textMuted, textAlign: 'center' },
+  legal: { flexDirection: 'row', justifyContent: 'center', flexWrap: 'wrap', columnGap: spacing.xl },
+}))

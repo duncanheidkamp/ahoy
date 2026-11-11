@@ -1,17 +1,18 @@
 import { Link } from 'expo-router'
 import { useState } from 'react'
-import { StyleSheet, Text, View } from 'react-native'
+import { Text, View } from 'react-native'
 
 import { FormScreen } from '@/components/screen'
 import { SocialAuthSlot } from '@/components/social-auth-slot'
 import { Button, TextField } from '@/components/ui'
 import { UsernameField, useUsernameField } from '@/components/username-field'
 import { supabase } from '@/lib/supabase'
-import { colors, minTouch, spacing, type } from '@/theme'
+import { createStyles, maxFontScale, minTouch, spacing, type } from '@/theme'
 
 const MIN_PASSWORD = 6 // Supabase Auth default minimum
 
 export default function SignUpScreen() {
+  const styles = useStyles()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const usernameField = useUsernameField()
@@ -44,7 +45,7 @@ export default function SignUpScreen() {
       } else if (msg.includes('password')) {
         setError(authError.message)
       } else {
-        setError('Sign up failed — try again')
+        setError('Lost at sea — sign up didn’t go through. Try again.')
       }
       return
     }
@@ -56,7 +57,7 @@ export default function SignUpScreen() {
   if (checkEmail) {
     return (
       <FormScreen>
-        <Text accessibilityRole="header" style={styles.title}>
+        <Text accessibilityRole="header" style={styles.title} maxFontSizeMultiplier={maxFontScale.display}>
           Check your email
         </Text>
         <Text style={styles.subtitle}>
@@ -71,7 +72,7 @@ export default function SignUpScreen() {
 
   return (
     <FormScreen>
-      <Text accessibilityRole="header" style={styles.title}>
+      <Text accessibilityRole="header" style={styles.title} maxFontSizeMultiplier={maxFontScale.display}>
         Join the crew
       </Text>
 
@@ -110,7 +111,7 @@ export default function SignUpScreen() {
       <Button title="Sign up" onPress={onSubmit} loading={busy} disabled={!canSubmit} />
 
       <View style={styles.footer}>
-        <Text style={styles.muted}>Already aboard?</Text>
+        <Text style={styles.footerText}>Already aboard?</Text>
         <Link href="/log-in" replace style={styles.link} accessibilityRole="link">
           Log in
         </Link>
@@ -119,11 +120,12 @@ export default function SignUpScreen() {
   )
 }
 
-const styles = StyleSheet.create({
-  title: { ...type.title, color: colors.accent, textAlign: 'center' },
-  subtitle: { ...type.body, color: colors.textMuted, textAlign: 'center' },
-  muted: { ...type.small, color: colors.textMuted },
-  bad: { ...type.small, color: colors.dangerText },
+const useStyles = createStyles((c) => ({
+  title: { ...type.title, color: c.accent, textAlign: 'center' },
+  subtitle: { ...type.body, color: c.textMuted, textAlign: 'center' },
+  muted: { ...type.small, color: c.textMuted },
+  footerText: { ...type.body, color: c.textMuted },
+  bad: { ...type.small, color: c.dangerText },
   footer: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: spacing.sm },
-  link: { ...type.bodyBold, color: colors.primary, minHeight: minTouch, paddingVertical: spacing.md },
-})
+  link: { ...type.bodyBold, color: c.link, minHeight: minTouch, paddingVertical: spacing.md, textDecorationLine: 'underline' },
+}))

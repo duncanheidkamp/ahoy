@@ -1,6 +1,6 @@
 import { describe, expect, it } from '@jest/globals'
 
-import { REPORT_NOTE_MAX, reportErrorMessage, validateReportNote } from '@/lib/reports'
+import { REPORT_ALSO_BLOCK_DEFAULT, REPORT_NOTE_MAX, reportErrorMessage, validateReportNote } from '@/lib/reports'
 
 describe('validateReportNote (mirrors public.reports.note)', () => {
   it('note is optional; blank -> null', () => {
@@ -28,5 +28,11 @@ describe('reportErrorMessage', () => {
   it('generic otherwise', () => {
     expect(reportErrorMessage({ message: 'new row violates row-level security policy' })).toMatch(/try again/)
     expect(reportErrorMessage(null)).toMatch(/try again/)
+  })
+})
+
+describe('report screen defaults', () => {
+  it('"Also block" is on by default', () => {
+    expect(REPORT_ALSO_BLOCK_DEFAULT).toBe(true)
   })
 })

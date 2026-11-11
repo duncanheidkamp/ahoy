@@ -10,9 +10,11 @@ import { ActivityIndicator, StyleSheet, Text, View } from 'react-native'
 
 import type { Provider, SocialResult } from '@/lib/social-auth'
 import { appleSignIn, googleSignIn, socialProviders } from '@/lib/social-auth-native'
-import { colors, minTouch, radii, spacing, type } from '@/theme'
+import { createStyles, minTouch, radii, spacing, type, useTheme } from '@/theme'
 
 export function SocialAuthSlot({ mode }: { mode: 'log-in' | 'sign-up' }) {
+  const styles = useStyles()
+  const { colors, scheme } = useTheme()
   const [providers, setProviders] = useState<Provider[] | null>(null)
   const [busy, setBusy] = useState<Provider | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -48,7 +50,11 @@ export function SocialAuthSlot({ mode }: { mode: 'log-in' | 'sign-up' }) {
               ? AppleAuthentication.AppleAuthenticationButtonType.SIGN_UP
               : AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN
           }
-          buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.WHITE}
+          buttonStyle={
+            scheme === 'dark'
+              ? AppleAuthentication.AppleAuthenticationButtonStyle.WHITE
+              : AppleAuthentication.AppleAuthenticationButtonStyle.BLACK
+          }
           cornerRadius={radii.md}
           style={styles.apple}
           onPress={() => run('apple', appleSignIn)}
@@ -57,14 +63,14 @@ export function SocialAuthSlot({ mode }: { mode: 'log-in' | 'sign-up' }) {
       {providers.includes('google') && (
         <GoogleSigninButton
           size={GoogleSigninButton.Size.Wide}
-          color={GoogleSigninButton.Color.Light}
+          color={scheme === 'dark' ? GoogleSigninButton.Color.Light : GoogleSigninButton.Color.Dark}
           disabled={!!busy}
           onPress={() => run('google', googleSignIn)}
           style={styles.google}
           accessibilityLabel={mode === 'sign-up' ? 'Sign up with Google' : 'Sign in with Google'}
         />
       )}
-      {busy && <ActivityIndicator color={colors.accent} />}
+      {busy && <ActivityIndicator color={colors.accent} accessibilityLabel="Signing in" />}
       {error && (
         <Text accessibilityLiveRegion="polite" style={styles.error}>
           {error}
@@ -79,12 +85,12 @@ export function SocialAuthSlot({ mode }: { mode: 'log-in' | 'sign-up' }) {
   )
 }
 
-const styles = StyleSheet.create({
+const useStyles = createStyles((c) => ({
   container: { gap: spacing.md },
   apple: { height: minTouch + 4, width: '100%' },
   google: { height: minTouch + 4, width: '100%' },
-  error: { ...type.body, color: colors.dangerText, textAlign: 'center' },
+  error: { ...type.body, color: c.dangerText, textAlign: 'center' },
   divider: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.sm },
-  line: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: colors.border },
-  or: { ...type.small, color: colors.textMuted },
-})
+  line: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: c.border },
+  or: { ...type.small, color: c.textMuted },
+}))

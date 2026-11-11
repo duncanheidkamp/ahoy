@@ -7,7 +7,7 @@ import { kv } from '@/lib/kv'
 import { createPendingInvites } from '@/lib/links'
 import { usePushSession } from '@/lib/push/use-push'
 import { useFriendshipRealtime } from '@/lib/realtime'
-import { colors, type } from '@/theme'
+import { type, useTheme } from '@/theme'
 
 const pendingInvites = createPendingInvites(kv)
 
@@ -28,6 +28,7 @@ function useResumePendingInvite() {
 }
 
 export default function AppLayout() {
+  const { colors } = useTheme()
   const userId = useUserId()
   useFriendshipRealtime(userId)
   usePushSession(userId)
@@ -39,12 +40,13 @@ export default function AppLayout() {
         screenOptions={{
           headerStyle: { backgroundColor: colors.surface },
           headerTintColor: colors.accent,
-          headerTitleStyle: { fontFamily: type.heading.fontFamily, fontWeight: type.heading.fontWeight },
+          headerTitleStyle: { fontFamily: type.navTitle.fontFamily, fontSize: type.navTitle.fontSize },
+          headerShadowVisible: false,
           contentStyle: { backgroundColor: colors.background },
         }}
       >
         <Stack.Screen name="index" options={{ headerShown: false, title: 'Crew' }} />
-        <Stack.Screen name="search" options={{ title: 'Find Friends' }} />
+        <Stack.Screen name="search" options={{ title: 'Find friends' }} />
         <Stack.Screen name="requests" options={{ title: 'Requests' }} />
         <Stack.Screen name="settings" options={{ title: 'Settings' }} />
         <Stack.Screen name="report" options={{ title: 'Report', presentation: 'modal' }} />

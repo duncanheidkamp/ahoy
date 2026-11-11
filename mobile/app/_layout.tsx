@@ -1,20 +1,23 @@
+import { PirataOne_400Regular } from '@expo-google-fonts/pirata-one'
 import { focusManager, QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { useFonts } from 'expo-font'
 import { Stack } from 'expo-router'
 import * as SplashScreen from 'expo-splash-screen'
 import { StatusBar } from 'expo-status-bar'
+import * as SystemUI from 'expo-system-ui'
 import { useEffect, useState } from 'react'
-import { AppState, Platform, Text } from 'react-native'
+import { AppState, Platform } from 'react-native'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 
 import { InAppBannerHost } from '@/components/in-app-banner'
 import { ToastProvider } from '@/components/toast'
-import { Centered, MutedText } from '@/components/ui'
+import { Centered, MutedText, Title } from '@/components/ui'
 import { AuthProvider, useAuth } from '@/lib/auth'
 import { authRoute } from '@/lib/auth-routing'
 import { isConfigured } from '@/lib/env'
 import { usePushForeground } from '@/lib/push/use-push'
 import { useProfile } from '@/lib/queries'
-import { colors, type } from '@/theme'
+import { fonts, useTheme } from '@/theme'
 
 SplashScreen.preventAutoHideAsync().catch(() => {})
 
@@ -26,7 +29,8 @@ focusManager.setEventListener((setFocused) => {
   return () => sub.remove()
 })
 
-function RootNavigator() {
+function RootNavigator({ fontsReady }: { fontsReady: boolean }) {
+  const { colors } = useTheme()
   const { session, loading } = useAuth()
   // Social-login accounts have no username until they pick one; the profile
   // decides between the app and the one-time picker (lib/auth-routing.ts).
@@ -37,11 +41,12 @@ function RootNavigator() {
     profile: { data: profile.data, isPending: profile.isPending, isError: profile.isError },
   })
 
+  const ready = route !== 'loading' && fontsReady
   useEffect(() => {
-    if (route !== 'loading') SplashScreen.hideAsync().catch(() => {})
-  }, [route])
+    if (ready) SplashScreen.hideAsync().catch(() => {})
+  }, [ready])
 
-  if (route === 'loading') return null
+  if (!ready) return null
 
   return (
     <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }}>
@@ -68,13 +73,14 @@ function PushForeground() {
   return <InAppBannerHost />
 }
 
-function ConfigError() {
+function ConfigError({ fontsReady }: { fontsReady: boolean }) {
   useEffect(() => {
-    SplashScreen.hideAsync().catch(() => {})
-  }, [])
+    if (fontsReady) SplashScreen.hideAsync().catch(() => {})
+  }, [fontsReady])
+  if (!fontsReady) return null
   return (
     <Centered>
-      <Text style={[type.heading, { color: colors.accent }]}>Missing configuration</Text>
+      <Title>Missing configuration</Title>
       <MutedText>
         Set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY in mobile/.env (see .env.example) and restart
         the dev server.
@@ -84,6 +90,18 @@ function ConfigError() {
 }
 
 export default function RootLayout() {
+  const theme = useTheme()
+  // Pirata One (headers, phrase flash, reveals). The splash stays up until it
+  // has loaded; if loading fails the app goes on with the system font.
+  const [fontsLoaded, fontError] = useFonts({ [fonts.display]: PirataOne_400Regular })
+  const fontsReady = fontsLoaded || !!fontError
+
+  // Root view color behind screens/modals/keyboard follows the theme, so light
+  // mode never flashes the dark config background.
+  useEffect(() => {
+    SystemUI.setBackgroundColorAsync(theme.colors.background).catch(() => {})
+  }, [theme.colors.background])
+
   const [queryClient] = useState(
     () =>
       new QueryClient({
@@ -95,18 +113,18 @@ export default function RootLayout() {
   )
 
   return (
-    <SafeAreaProvider style={{ backgroundColor: colors.background }}>
+    <SafeAreaProvider style={{ backgroundColor: theme.colors.background }}>
       <QueryClientProvider client={queryClient}>
-        <StatusBar style="light" />
+        <StatusBar style={theme.statusBar} />
         {isConfigured ? (
           <AuthProvider>
             <ToastProvider>
-              <RootNavigator />
+              <RootNavigator fontsReady={fontsReady} />
               <PushForeground />
             </ToastProvider>
           </AuthProvider>
         ) : (
-          <ConfigError />
+          <ConfigError fontsReady={fontsReady} />
         )}
       </QueryClientProvider>
     </SafeAreaProvider>

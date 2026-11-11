@@ -2,11 +2,13 @@ import { describe, expect, it } from '@jest/globals'
 
 import { memoryStore } from '@/lib/kv'
 import {
+  autoActivatePhraseId,
   celebrationFor,
   createSeenPhrases,
   newlyUnlocked,
   phraseItems,
   remainingLabel,
+  resolveSeen,
   shouldRefetchPhrases,
 } from '@/lib/phrases'
 import type { Phrase } from '@/lib/types'
@@ -94,5 +96,63 @@ describe('unlock celebrations', () => {
     const seen = createSeenPhrases(store, 'u')
     expect(await seen.get()).toEqual([2])
     expect(await seen.add(2)).toEqual([2])
+  })
+})
+
+describe('Yo! becomes your active phrase when unlocked', () => {
+  it('the Yo! reveal auto-activates Yo!; regular unlocks only offer "Use it"', () => {
+    const rows = serverPhrases(1000)
+    expect(autoActivatePhraseId(celebrationFor(rows[2]))).toBe(3)
+    expect(autoActivatePhraseId(celebrationFor(rows[1]))).toBeNull()
+    expect(autoActivatePhraseId(null)).toBeNull()
+  })
+})
+
+describe('new device baseline (no seen record yet)', () => {
+  // Mirrors PhraseCelebrationHost: read the record, resolve, persist a baseline, then queue.
+  async function celebrationsOn(store: ReturnType<typeof memoryStore>, rows: ReturnType<typeof serverPhrases>) {
+    const seenStore = createSeenPhrases(store, 'u1')
+    const { seen, baseline } = resolveSeen(await seenStore.read(), rows)
+    if (seen && baseline) await seenStore.setAll(seen)
+    return seen ? newlyUnlocked(rows, seen).map((p) => p.id) : []
+  }
+
+  it('waits for the server list before deciding anything', () => {
+    expect(resolveSeen(null, undefined)).toEqual({ seen: null, baseline: false })
+  })
+
+  it('marks everything already unlocked as seen without celebrating — Yo! included', async () => {
+    const store = memoryStore()
+    const rows = serverPhrases(1200, 3) // has Arrr + Yo!, Yo! active from the old phone
+    expect(resolveSeen(null, rows)).toEqual({ seen: [2, 3], baseline: true })
+    expect(await celebrationsOn(store, rows)).toEqual([])
+    expect(store.data['ahoy.phrases.seen.u1']).toEqual([2, 3])
+    // and no reveal means no auto-switch either
+    expect(autoActivatePhraseId(null)).toBeNull()
+  })
+
+  it('celebrates only unlocks that happen after the baseline', async () => {
+    const store = memoryStore()
+    expect(await celebrationsOn(store, serverPhrases(1200))).toEqual([])
+    expect(await celebrationsOn(store, serverPhrases(2000))).toEqual([4])
+  })
+
+  it('a brand-new user gets an empty baseline, so their first unlock is celebrated', async () => {
+    const store = memoryStore()
+    expect(await celebrationsOn(store, serverPhrases(0))).toEqual([])
+    expect(store.data['ahoy.phrases.seen.u1']).toEqual([])
+    expect(await celebrationsOn(store, serverPhrases(500))).toEqual([2])
+  })
+
+  it('an existing record is used as-is (no new baseline)', async () => {
+    const store = memoryStore({ 'ahoy.phrases.seen.u1': [] })
+    expect(resolveSeen([], serverPhrases(500))).toEqual({ seen: [], baseline: false })
+    expect(await celebrationsOn(store, serverPhrases(500))).toEqual([2])
+  })
+
+  it('the baseline is per user on the device', async () => {
+    const store = memoryStore({ 'ahoy.phrases.seen.alice': [2] })
+    expect(await createSeenPhrases(store, 'bob').read()).toBeNull()
+    expect(await createSeenPhrases(store, 'alice').read()).toEqual([2])
   })
 })
