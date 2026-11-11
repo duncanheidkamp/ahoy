@@ -4,7 +4,7 @@
 
 import { router } from 'expo-router'
 import { useState } from 'react'
-import { StyleSheet, Text, View } from 'react-native'
+import { Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { useToast } from '@/components/toast'
@@ -14,9 +14,10 @@ import { kv } from '@/lib/kv'
 import { STORAGE_KEYS } from '@/lib/push/constants'
 import { registrationDeps, requestPermission } from '@/lib/push/native'
 import { registerForPush } from '@/lib/push/registration'
-import { colors, spacing, type } from '@/theme'
+import { createStyles, maxFontScale, spacing, type } from '@/theme'
 
 export default function EnableNotificationsScreen() {
+  const styles = useStyles()
   const userId = useUserId()
   const toast = useToast()
   const [busy, setBusy] = useState(false)
@@ -47,7 +48,10 @@ export default function EnableNotificationsScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.content}>
-        <Text accessibilityRole="header" style={styles.title}>
+        <Text style={styles.icon} importantForAccessibility="no" accessibilityElementsHidden>
+          🔔
+        </Text>
+        <Text accessibilityRole="header" style={styles.title} maxFontSizeMultiplier={maxFontScale.display}>
           Hear the call?
         </Text>
         <MutedText>
@@ -63,9 +67,10 @@ export default function EnableNotificationsScreen() {
   )
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.background },
+const useStyles = createStyles((c) => ({
+  safe: { flex: 1, backgroundColor: c.background },
   content: { flex: 1, justifyContent: 'center', padding: spacing.xl, gap: spacing.xl },
-  title: { ...type.title, color: colors.accent, textAlign: 'center' },
+  title: { ...type.title, color: c.accent, textAlign: 'center' },
   buttons: { gap: spacing.md },
-})
+  icon: { fontSize: 56, textAlign: 'center' },
+}))

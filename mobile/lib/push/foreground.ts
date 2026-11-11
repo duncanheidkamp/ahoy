@@ -37,6 +37,8 @@ export type QueryGroup = 'stats' | 'friendBadges' | 'requests'
 export interface ForegroundDeps {
   showBanner(banner: InAppBanner): void
   playAhoySound(): void
+  /** Success haptic: someone hailed you (e.g. an "Ahoy back") while the app is open. */
+  hapticReceived(): void
   invalidate(groups: QueryGroup[]): void
 }
 
@@ -57,6 +59,7 @@ export function createForegroundDispatcher(deps: ForegroundDeps) {
           route: '/',
         })
         deps.playAhoySound()
+        deps.hapticReceived()
         deps.invalidate(['stats', 'friendBadges'])
         break
       case 'friend_request':

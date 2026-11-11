@@ -3,18 +3,19 @@
 // flips the guard to the app, which then resumes any pending invite link.
 
 import { useState } from 'react'
-import { StyleSheet, Text } from 'react-native'
+import { Text } from 'react-native'
 
 import { FormScreen } from '@/components/screen'
-import { Button } from '@/components/ui'
+import { Button, LinkText } from '@/components/ui'
 import { UsernameField, useUsernameField } from '@/components/username-field'
 import { registrationDeps } from '@/lib/push/native'
 import { signOutWithPushCleanup } from '@/lib/push/registration'
 import { useClaimUsername } from '@/lib/queries'
 import { googleSignOut } from '@/lib/social-auth-native'
-import { colors, minTouch, spacing, type } from '@/theme'
+import { createStyles, maxFontScale, type } from '@/theme'
 
 export default function PickUsernameScreen() {
+  const styles = useStyles()
   const field = useUsernameField()
   const claim = useClaimUsername()
   const [error, setError] = useState<string | null>(null)
@@ -40,7 +41,7 @@ export default function PickUsernameScreen() {
 
   return (
     <FormScreen>
-      <Text accessibilityRole="header" style={styles.title}>
+      <Text accessibilityRole="header" style={styles.title} maxFontSizeMultiplier={maxFontScale.display}>
         Pick your pirate name
       </Text>
       <Text style={styles.subtitle}>
@@ -57,29 +58,21 @@ export default function PickUsernameScreen() {
 
       <Button title="Set sail" onPress={onSubmit} loading={claim.isPending} disabled={!field.available} />
 
-      <Text
-        accessibilityRole="button"
-        style={styles.link}
+      <LinkText
+        role="button"
         onPress={async () => {
           await googleSignOut()
           await signOutWithPushCleanup(registrationDeps)
         }}
       >
         Wrong account? Log out
-      </Text>
+      </LinkText>
     </FormScreen>
   )
 }
 
-const styles = StyleSheet.create({
-  title: { ...type.title, color: colors.accent, textAlign: 'center' },
-  subtitle: { ...type.body, color: colors.textMuted, textAlign: 'center' },
-  error: { ...type.small, color: colors.dangerText },
-  link: {
-    ...type.bodyBold,
-    color: colors.primary,
-    textAlign: 'center',
-    minHeight: minTouch,
-    paddingVertical: spacing.md,
-  },
-})
+const useStyles = createStyles((c) => ({
+  title: { ...type.title, color: c.accent, textAlign: 'center' },
+  subtitle: { ...type.body, color: c.textMuted, textAlign: 'center' },
+  error: { ...type.small, color: c.dangerText },
+}))

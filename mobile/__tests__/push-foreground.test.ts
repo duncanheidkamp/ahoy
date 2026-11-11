@@ -29,7 +29,7 @@ describe('foreground notification handler', () => {
   })
 
   function setup() {
-    const deps = { showBanner: jest.fn(), playAhoySound: jest.fn(), invalidate: jest.fn() }
+    const deps = { showBanner: jest.fn(), playAhoySound: jest.fn(), hapticReceived: jest.fn(), invalidate: jest.fn() }
     return { deps, dispatch: createForegroundDispatcher(deps) }
   }
 
@@ -38,6 +38,7 @@ describe('foreground notification handler', () => {
     expect(dispatch(note({ type: 'ahoy', senderId: 's', senderUsername: 'alice' }))).toBe('ahoy')
     expect(deps.showBanner).toHaveBeenCalledWith({ title: 'Yo!', message: '@alice', route: '/' })
     expect(deps.playAhoySound).toHaveBeenCalledTimes(1)
+    expect(deps.hapticReceived).toHaveBeenCalledTimes(1)
     expect(deps.invalidate).toHaveBeenCalledWith(['stats', 'friendBadges'])
   })
 
@@ -53,6 +54,7 @@ describe('foreground notification handler', () => {
     })
     expect(deps.invalidate).toHaveBeenCalledWith(['requests'])
     expect(deps.playAhoySound).not.toHaveBeenCalled()
+    expect(deps.hapticReceived).not.toHaveBeenCalled()
   })
 
   it('friend accepted: banner and crew refresh', () => {

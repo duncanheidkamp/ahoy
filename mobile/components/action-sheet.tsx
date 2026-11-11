@@ -1,9 +1,9 @@
 // Minimal cross-platform action sheet (Android's Alert caps at 3 buttons).
 
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native'
+import { Modal, Pressable, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
-import { colors, minTouch, radii, spacing, type } from '@/theme'
+import { createStyles, maxFontScale, minTouch, radii, spacing, type } from '@/theme'
 
 export interface SheetAction {
   label: string
@@ -22,13 +22,14 @@ export function ActionSheet({
   actions: SheetAction[]
   onClose: () => void
 }) {
+  const styles = useStyles()
   const insets = useSafeAreaInsets()
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
       <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel="Close menu" accessibilityRole="button">
         <View style={[styles.sheet, { paddingBottom: insets.bottom + spacing.md }]} onStartShouldSetResponder={() => true}>
           {title ? (
-            <Text accessibilityRole="header" style={styles.title}>
+            <Text accessibilityRole="header" style={styles.title} maxFontSizeMultiplier={maxFontScale.display}>
               {title}
             </Text>
           ) : null}
@@ -36,6 +37,7 @@ export function ActionSheet({
             <Pressable
               key={a.label}
               accessibilityRole="button"
+              accessibilityLabel={a.label}
               onPress={() => {
                 onClose()
                 a.onPress()
@@ -47,6 +49,7 @@ export function ActionSheet({
           ))}
           <Pressable
             accessibilityRole="button"
+            accessibilityLabel="Cancel"
             onPress={onClose}
             style={({ pressed }) => [styles.action, styles.cancel, pressed && styles.pressed]}
           >
@@ -58,27 +61,27 @@ export function ActionSheet({
   )
 }
 
-const styles = StyleSheet.create({
-  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: colors.overlay },
+const useStyles = createStyles((c) => ({
+  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: c.overlay },
   sheet: {
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
     borderTopLeftRadius: radii.lg,
     borderTopRightRadius: radii.lg,
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.lg,
     gap: spacing.sm,
   },
-  title: { ...type.heading, color: colors.accent, textAlign: 'center', marginBottom: spacing.xs },
+  title: { ...type.heading, color: c.accent, textAlign: 'center', marginBottom: spacing.xs },
   action: {
     minHeight: minTouch + 4,
     justifyContent: 'center',
     alignItems: 'center',
     borderRadius: radii.md,
-    backgroundColor: colors.surfaceRaised,
+    backgroundColor: c.surfaceRaised,
   },
   pressed: { opacity: 0.8 },
-  actionText: { ...type.bodyBold, color: colors.text },
-  destructive: { color: colors.dangerText },
-  cancel: { backgroundColor: colors.secondary, borderWidth: 1, borderColor: colors.border, marginTop: spacing.xs },
-  cancelText: { ...type.bodyBold, color: colors.secondaryText },
-})
+  actionText: { ...type.bodyBold, color: c.text },
+  destructive: { color: c.dangerText },
+  cancel: { backgroundColor: c.secondary, borderWidth: 1, borderColor: c.border, marginTop: spacing.xs },
+  cancelText: { ...type.bodyBold, color: c.secondaryText },
+}))

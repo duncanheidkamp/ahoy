@@ -2,15 +2,17 @@
 // and the social-login "Pick your pirate name" screen.
 
 import { useState, type ReactNode } from 'react'
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native'
+import { ActivityIndicator, Text, View } from 'react-native'
 
 import { TextField } from '@/components/ui'
 import { useUsernameAvailable } from '@/lib/queries'
 import { useDebounced } from '@/lib/use-debounced'
 import { normalizeUsername, USERNAME_MAX, validateUsername } from '@/lib/username'
-import { colors, spacing, type } from '@/theme'
+import { createStyles, spacing, type, useTheme } from '@/theme'
 
 export function useUsernameField() {
+  const styles = useStyles()
+  const { colors } = useTheme()
   const [username, setUsername] = useState('')
   const validation = validateUsername(username)
   const debouncedUsername = useDebounced(username, 350)
@@ -70,9 +72,9 @@ export function UsernameField({
   )
 }
 
-const styles = StyleSheet.create({
+const useStyles = createStyles((c) => ({
   hintRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  muted: { ...type.small, color: colors.textMuted },
-  good: { ...type.small, color: colors.success },
-  bad: { ...type.small, color: colors.dangerText },
-})
+  muted: { ...type.small, color: c.textMuted },
+  good: { ...type.small, color: c.success },
+  bad: { ...type.small, color: c.dangerText },
+}))

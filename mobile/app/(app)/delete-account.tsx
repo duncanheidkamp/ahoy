@@ -6,7 +6,7 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { router } from 'expo-router'
 import { useState } from 'react'
-import { StyleSheet, Text } from 'react-native'
+import { Text } from 'react-native'
 
 import { FormScreen } from '@/components/screen'
 import { Button, TextField } from '@/components/ui'
@@ -16,9 +16,10 @@ import { clearLocalState } from '@/lib/local-state'
 import { useProfile } from '@/lib/queries'
 import { appleAuthorizationCodeForDeletion, googleSignOut } from '@/lib/social-auth-native'
 import { supabase } from '@/lib/supabase'
-import { colors, type } from '@/theme'
+import { createStyles, maxFontScale, type } from '@/theme'
 
 export default function DeleteAccountScreen() {
+  const styles = useStyles()
   const { session } = useAuth()
   const qc = useQueryClient()
   const profile = useProfile()
@@ -52,13 +53,13 @@ export default function DeleteAccountScreen() {
       },
     })
     setBusy(false)
-    if (result === 'failed') setError('Couldn’t delete your account — check your connection and try again')
+    if (result === 'failed') setError('Lost at sea — your account wasn’t deleted. Check your connection and try again.')
     // On success the auth gate swaps to Log in.
   }
 
   return (
     <FormScreen edges={['bottom']}>
-      <Text accessibilityRole="header" style={styles.title}>
+      <Text accessibilityRole="header" style={styles.title} maxFontSizeMultiplier={maxFontScale.display}>
         Delete your account?
       </Text>
       <Text style={styles.body}>
@@ -84,8 +85,8 @@ export default function DeleteAccountScreen() {
   )
 }
 
-const styles = StyleSheet.create({
-  title: { ...type.heading, color: colors.dangerText },
-  body: { ...type.body, color: colors.textMuted },
-  error: { ...type.small, color: colors.dangerText },
-})
+const useStyles = createStyles((c) => ({
+  title: { ...type.heading, color: c.dangerText },
+  body: { ...type.body, color: c.textMuted },
+  error: { ...type.small, color: c.dangerText },
+}))

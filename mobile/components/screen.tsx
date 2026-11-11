@@ -1,11 +1,12 @@
 import type { ReactNode } from 'react'
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet } from 'react-native'
+import { KeyboardAvoidingView, Platform, ScrollView } from 'react-native'
 import { SafeAreaView, type Edge } from 'react-native-safe-area-context'
 
-import { colors, spacing } from '@/theme'
+import { createStyles, spacing } from '@/theme'
 
-/** Scrollable form screen with keyboard avoidance (auth screens). */
+/** Scrollable form screen with keyboard avoidance (auth screens, modals). */
 export function FormScreen({ children, edges = ['top', 'bottom'] }: { children: ReactNode; edges?: Edge[] }) {
+  const styles = useStyles()
   return (
     <SafeAreaView style={styles.safe} edges={edges}>
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -17,8 +18,8 @@ export function FormScreen({ children, edges = ['top', 'bottom'] }: { children: 
   )
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.background },
+const useStyles = createStyles((c) => ({
+  safe: { flex: 1, backgroundColor: c.background },
   flex: { flex: 1 },
   content: { flexGrow: 1, justifyContent: 'center', padding: spacing.xl, gap: spacing.lg },
-})
+}))

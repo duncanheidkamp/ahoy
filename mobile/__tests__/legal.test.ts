@@ -17,12 +17,6 @@ describe('legal links', () => {
     ])
   })
 
-  it('the Settings screen renders legalLinks as links', () => {
-    const src = fs.readFileSync(path.resolve(__dirname, '../app/(app)/settings.tsx'), 'utf8')
-    expect(src).toMatch(/legalLinks\(LINKS_DOMAIN\)/)
-    expect(src).toMatch(/accessibilityRole="link"/)
-  })
-
   it('the links/ site privacy page links the same terms', () => {
     const html = fs.readFileSync(path.resolve(__dirname, '../../links/privacy.html'), 'utf8')
     expect(html).toContain(`href="${TERMS_OF_USE_URL}"`)

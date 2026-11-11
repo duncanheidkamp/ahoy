@@ -3,7 +3,7 @@
 
 import { router, useLocalSearchParams } from 'expo-router'
 import { useState } from 'react'
-import { StyleSheet, Switch, Text, View } from 'react-native'
+import { Switch, Text, View } from 'react-native'
 
 import { FormScreen } from '@/components/screen'
 import { useToast } from '@/components/toast'
@@ -12,11 +12,13 @@ import { useUserId } from '@/lib/auth'
 import { blockUser, invalidateCrew, reportUser } from '@/lib/queries'
 import { REPORT_ALSO_BLOCK_DEFAULT, REPORT_NOTE_MAX, reportErrorMessage, validateReportNote } from '@/lib/reports'
 import { useQueryClient } from '@tanstack/react-query'
-import { colors, spacing, type } from '@/theme'
+import { createStyles, maxFontScale, minTouch, spacing, type, useTheme } from '@/theme'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export default function ReportScreen() {
+  const styles = useStyles()
+  const { colors } = useTheme()
   const myId = useUserId()
   const toast = useToast()
   const qc = useQueryClient()
@@ -52,7 +54,7 @@ export default function ReportScreen() {
 
   return (
     <FormScreen edges={['bottom']}>
-      <Text accessibilityRole="header" style={styles.title}>
+      <Text accessibilityRole="header" style={styles.title} maxFontSizeMultiplier={maxFontScale.display}>
         Report @{username ?? 'sailor'}
       </Text>
       <Text style={styles.body}>
@@ -84,6 +86,8 @@ export default function ReportScreen() {
           onValueChange={setAlsoBlock}
           accessibilityLabel={`Also block @${username ?? 'them'}`}
           trackColor={{ true: colors.primary, false: colors.border }}
+          thumbColor={colors.inputBackground}
+          ios_backgroundColor={colors.border}
         />
       </View>
       {error && (
@@ -97,12 +101,18 @@ export default function ReportScreen() {
   )
 }
 
-const styles = StyleSheet.create({
-  title: { ...type.heading, color: colors.accent },
-  body: { ...type.body, color: colors.textMuted },
+const useStyles = createStyles((c) => ({
+  title: { ...type.heading, color: c.accent },
+  body: { ...type.body, color: c.textMuted },
   note: { minHeight: 120 },
-  muted: { ...type.small, color: colors.textMuted },
-  error: { ...type.small, color: colors.dangerText },
-  switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md },
-  switchLabel: { ...type.bodyBold, color: colors.text, flexShrink: 1 },
-})
+  muted: { ...type.small, color: c.textMuted },
+  error: { ...type.small, color: c.dangerText },
+  switchRow: {
+    minHeight: minTouch,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+  },
+  switchLabel: { ...type.bodyBold, color: c.text, flexShrink: 1 },
+}))

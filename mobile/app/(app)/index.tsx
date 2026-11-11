@@ -1,21 +1,22 @@
 import { router } from 'expo-router'
 import { useCallback, useState } from 'react'
-import { FlatList, Pressable, RefreshControl, Share, StyleSheet, Text, View } from 'react-native'
+import { FlatList, Pressable, RefreshControl, Share, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { useSailorActions } from '@/components/crew-actions'
 import { CrewRow } from '@/components/crew-row'
 import { useToast } from '@/components/toast'
-import { Button, Centered, Loading, MutedText } from '@/components/ui'
+import { Button, EmptyState, RowSkeleton } from '@/components/ui'
 import { useUserId } from '@/lib/auth'
 import { LINKS_DOMAIN } from '@/lib/env'
 import { inviteMessage, inviteUrl } from '@/lib/links'
 import { DEFAULT_PHRASE } from '@/lib/phrases'
 import { usePrePromptOffer } from '@/lib/push/use-push'
 import { useCrew, useProfile, useRequests, type CrewMember } from '@/lib/queries'
-import { colors, minTouch, radii, spacing, type } from '@/theme'
+import { createStyles, maxFontScale, minTouch, radii, spacing, type, useTheme } from '@/theme'
 
 function HeaderButton({ label, count, onPress }: { label: string; count?: number; onPress: () => void }) {
+  const styles = useStyles()
   const a11y = count ? `${label}, ${count} pending` : label
   return (
     <Pressable
@@ -36,6 +37,8 @@ function HeaderButton({ label, count, onPress }: { label: string; count?: number
 }
 
 export default function CrewScreen() {
+  const styles = useStyles()
+  const { colors } = useTheme()
   const userId = useUserId()
   const toast = useToast()
   const profile = useProfile()
@@ -77,8 +80,13 @@ export default function CrewScreen() {
   const header = (
     <View style={styles.header}>
       <View style={styles.headerTop}>
-        <Text accessibilityRole="header" style={styles.title}>
-          AHOY
+        <Text
+          accessibilityRole="header"
+          accessibilityLabel="Ahoy, your crew"
+          style={styles.title}
+          maxFontSizeMultiplier={maxFontScale.display}
+        >
+          Ahoy!
         </Text>
         <View style={styles.headerButtons}>
           <HeaderButton label="Find" onPress={() => router.push('/search')} />
@@ -94,13 +102,12 @@ export default function CrewScreen() {
 
   let body
   if (isLoading) {
-    body = <Loading />
+    body = <RowSkeleton />
   } else if (isError && crew.length === 0) {
     body = (
-      <Centered>
-        <MutedText>Couldn&apos;t load your crew. Pull down to try again.</MutedText>
-        <Button title="Retry" variant="secondary" onPress={onRefresh} />
-      </Centered>
+      <EmptyState icon="🌊" title="Lost at sea" message="Couldn’t reach your crew. Check your connection and try again.">
+        <Button title="Try again" variant="secondary" onPress={onRefresh} loading={refreshing} />
+      </EmptyState>
     )
   } else {
     body = (
@@ -115,14 +122,14 @@ export default function CrewScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} colors={[colors.primary]} />
         }
         ListEmptyComponent={
-          <Centered>
-            <Text style={styles.emptyTitle}>No crew yet</Text>
-            <MutedText>Find friends by username, or invite them to Ahoy.</MutedText>
-            <View style={styles.emptyButtons}>
-              <Button title="Find Friends" onPress={() => router.push('/search')} />
-              <Button title="Invite" variant="secondary" onPress={invite} />
-            </View>
-          </Centered>
+          <EmptyState
+            icon="🧭"
+            title="No crew yet"
+            message="Every ship needs a crew. Find friends by username, or send them your invite link."
+          >
+            <Button title="Find friends" onPress={() => router.push('/search')} />
+            <Button title="Invite friends" variant="secondary" onPress={invite} />
+          </EmptyState>
         }
       />
     )
@@ -137,18 +144,26 @@ export default function CrewScreen() {
   )
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.background },
+const useStyles = createStyles((c) => ({
+  safe: { flex: 1, backgroundColor: c.background },
   body: { flex: 1 },
   header: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.sm,
     paddingBottom: spacing.md,
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
+    borderBottomColor: c.border,
+    borderBottomWidth: 1,
     gap: spacing.xs,
   },
-  headerTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' },
-  title: { ...type.title, color: colors.accent },
+  headerTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    columnGap: spacing.md,
+  },
+  title: { ...type.title, color: c.accent },
   headerButtons: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, flexWrap: 'wrap' },
   headerButton: {
     minHeight: minTouch,
@@ -159,18 +174,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: spacing.xs,
   },
-  headerButtonText: { ...type.bodyBold, color: colors.textSubtle },
+  headerButtonText: { ...type.bodyBold, color: c.textSubtle },
   countBadge: {
-    backgroundColor: colors.countBadge,
+    backgroundColor: c.countBadge,
     borderRadius: radii.pill,
     minWidth: 20,
     paddingHorizontal: spacing.xs,
     alignItems: 'center',
   },
-  countBadgeText: { ...type.small, color: colors.countBadgeText },
+  countBadgeText: { ...type.small, color: c.countBadgeText },
   pressed: { opacity: 0.7 },
-  total: { ...type.small, color: colors.textMuted },
+  total: { ...type.small, color: c.textMuted },
   emptyContainer: { flexGrow: 1 },
-  emptyTitle: { ...type.heading, color: colors.accent },
-  emptyButtons: { gap: spacing.md, alignSelf: 'stretch' },
-})
+}))

@@ -51,8 +51,10 @@ const appConfig = ({ config }: ConfigContext): ExpoConfig => ({
   version: '1.0.0',
   orientation: 'portrait',
   icon: './assets/images/icon.png',
-  userInterfaceStyle: 'dark',
-  backgroundColor: '#0a0f1a', // theme.colors.background (app.config can't import theme.ts)
+  // Light/dark follow the system (theme.ts has both palettes; dark is the
+  // default look). The root view color is set at runtime per theme.
+  userInterfaceStyle: 'automatic',
+  backgroundColor: '#0a0f1a', // themes.dark.colors.background (app.config can't import theme.ts)
   platforms: ['ios', 'android'],
   ios: {
     bundleIdentifier: BUNDLE_ID,

@@ -1,8 +1,8 @@
 import { useState, type ReactNode } from 'react'
-import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { RefreshControl, ScrollView, Text, View } from 'react-native'
 
 import { useToast } from '@/components/toast'
-import { Button, Loading, MutedText, SectionTitle } from '@/components/ui'
+import { Button, CardSkeleton, MutedText, SectionTitle } from '@/components/ui'
 import { useUserId } from '@/lib/auth'
 import {
   useAcceptRequest,
@@ -11,9 +11,10 @@ import {
   useRequests,
   type FriendRequestRow,
 } from '@/lib/queries'
-import { colors, radii, spacing, type } from '@/theme'
+import { createStyles, radii, spacing, type, useTheme } from '@/theme'
 
 function RequestItem({ request, note, children }: { request: FriendRequestRow; note?: string; children: ReactNode }) {
+  const styles = useStyles()
   return (
     <View style={styles.item}>
       <View style={styles.nameBox}>
@@ -28,6 +29,8 @@ function RequestItem({ request, note, children }: { request: FriendRequestRow; n
 }
 
 export default function RequestsScreen() {
+  const styles = useStyles()
+  const { colors } = useTheme()
   const userId = useUserId()
   const toast = useToast()
   const requests = useRequests(userId)
@@ -48,7 +51,13 @@ export default function RequestsScreen() {
     }
   }
 
-  if (requests.isLoading) return <Loading />
+  if (requests.isLoading) {
+    return (
+      <View style={[styles.container, styles.content]}>
+        <CardSkeleton count={3} />
+      </View>
+    )
+  }
 
   const incoming = requests.data?.incoming ?? []
   const outgoing = requests.data?.outgoing ?? []
@@ -69,12 +78,12 @@ export default function RequestsScreen() {
         />
       }
     >
-      {requests.isError && <MutedText>Couldn&apos;t load requests. Pull down to retry.</MutedText>}
+      {requests.isError && <MutedText>Lost at sea — couldn&apos;t load requests. Pull down to try again.</MutedText>}
 
       <View style={styles.section}>
         <SectionTitle>Incoming ({incoming.length})</SectionTitle>
         {incoming.length === 0 ? (
-          <MutedText>No one is asking to join your crew.</MutedText>
+          <MutedText align="left">No one&apos;s knocking on the hull yet. Share your invite link from Settings.</MutedText>
         ) : (
           incoming.map((r) => (
             <RequestItem key={r.id} request={r}>
@@ -103,7 +112,7 @@ export default function RequestsScreen() {
       <View style={styles.section}>
         <SectionTitle>Outgoing ({outgoing.length})</SectionTitle>
         {outgoing.length === 0 ? (
-          <MutedText>No requests waiting on others.</MutedText>
+          <MutedText align="left">No requests waiting on others.</MutedText>
         ) : (
           outgoing.map((r) => (
             // Declined requests look exactly like pending ones here.
@@ -124,8 +133,8 @@ export default function RequestsScreen() {
   )
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
+const useStyles = createStyles((c) => ({
+  container: { flex: 1, backgroundColor: c.background },
   content: { padding: spacing.lg, gap: spacing.xl },
   section: { gap: spacing.sm },
   item: {
@@ -135,11 +144,11 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: spacing.sm,
     padding: spacing.md,
-    backgroundColor: colors.surfaceRaised,
+    backgroundColor: c.surfaceRaised,
     borderRadius: radii.md,
   },
   nameBox: { flexShrink: 1, gap: spacing.xs },
-  name: { ...type.bodyBold, color: colors.text },
-  note: { ...type.small, color: colors.textMuted },
+  name: { ...type.bodyBold, color: c.text },
+  note: { ...type.small, color: c.textMuted },
   actions: { flexDirection: 'row', gap: spacing.sm },
-})
+}))

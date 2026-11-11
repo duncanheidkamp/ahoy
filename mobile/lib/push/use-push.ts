@@ -1,4 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
+import * as Haptics from 'expo-haptics'
 import * as Notifications from 'expo-notifications'
 import { router, useFocusEffect } from 'expo-router'
 import { useCallback, useEffect, useRef } from 'react'
@@ -48,6 +49,9 @@ export function usePushForeground() {
     const dispatch = createForegroundDispatcher({
       showBanner: (banner) => pushEvents.emit({ type: 'banner', banner }),
       playAhoySound,
+      hapticReceived: () => {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {})
+      },
       invalidate,
     })
     const received = Notifications.addNotificationReceivedListener(dispatch)

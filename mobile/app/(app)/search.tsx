@@ -1,16 +1,17 @@
 import { useState } from 'react'
-import { FlatList, StyleSheet, Text, View } from 'react-native'
+import { FlatList, Text, View } from 'react-native'
 
 import { useToast } from '@/components/toast'
-import { Button, Centered, Loading, MutedText, TextField } from '@/components/ui'
+import { Button, EmptyState, RowSkeleton, TextField } from '@/components/ui'
 import { useUserId } from '@/lib/auth'
 import { useDebounced } from '@/lib/use-debounced'
 import { getBadge } from '@/lib/badges'
 import { useAddFriend, useSearchUsers, type AddResult } from '@/lib/queries'
-import { colors, rowColor, rowMinHeight, spacing, type } from '@/theme'
+import { createStyles, rowColor, rowMinHeight, spacing, type } from '@/theme'
 
 
 export default function SearchScreen() {
+  const styles = useStyles()
   const userId = useUserId()
   const toast = useToast()
   const [query, setQuery] = useState('')
@@ -52,7 +53,7 @@ export default function SearchScreen() {
       </View>
 
       {search.isLoading && hasQuery ? (
-        <Loading />
+        <RowSkeleton count={4} />
       ) : (
         <FlatList
           data={hasQuery ? results : []}
@@ -65,7 +66,7 @@ export default function SearchScreen() {
             return (
               <View style={[styles.row, { backgroundColor: rowColor(index) }]}>
                 <View style={styles.rowText}>
-                  <Text style={styles.name} numberOfLines={1}>
+                  <Text style={styles.name} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.6}>
                     {item.username.toUpperCase()}
                   </Text>
                   {badge && (
@@ -93,15 +94,13 @@ export default function SearchScreen() {
             )
           }}
           ListEmptyComponent={
-            <Centered>
-              <MutedText>
-                {!hasQuery
-                  ? 'Search for sailors by username'
-                  : search.isError
-                    ? 'Search failed — check your connection'
-                    : 'No sailors by that name'}
-              </MutedText>
-            </Centered>
+            !hasQuery ? (
+              <EmptyState icon="🔭" title="Spy a sailor" message="Search for friends by their username." />
+            ) : search.isError ? (
+              <EmptyState icon="🌊" title="Lost at sea" message="Search didn’t go through. Check your connection and try again." />
+            ) : (
+              <EmptyState icon="🏝️" title="No sailors by that name" message="Check the spelling, or send them your invite link." />
+            )
           }
         />
       )}
@@ -109,8 +108,8 @@ export default function SearchScreen() {
   )
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
+const useStyles = createStyles((c) => ({
+  container: { flex: 1, backgroundColor: c.background },
   searchBox: { padding: spacing.lg },
   emptyContainer: { flexGrow: 1 },
   row: {
@@ -123,6 +122,6 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   rowText: { flexShrink: 1, gap: spacing.xs },
-  name: { ...type.heading, color: colors.onRow },
-  badge: { ...type.small, color: colors.onRowMuted },
-})
+  name: { ...type.row, fontSize: 20, color: c.onRow },
+  badge: { ...type.small, color: c.onRowMuted },
+}))
