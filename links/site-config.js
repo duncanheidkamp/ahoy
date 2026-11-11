@@ -11,6 +11,10 @@ window.AHOY_SITE = {
   appstore: '',
   // Support contact shown on /support. Leave empty to show only the in-app route.
   supportEmail: '',
+  // The links domain itself (EXPO_PUBLIC_LINKS_DOMAIN, e.g. ahoy.duncanheidkamp.com).
+  // Used by the old PWA domain's "moved to the app" page (site/, built with
+  // scripts/build-site.sh) to link here.
+  linksDomain: '',
 }
 
 // Fills every [data-store="testflight|play|appstore"] link and

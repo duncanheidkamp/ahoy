@@ -1,0 +1,6 @@
+# The old PWA's Vercel project only needs the landing page sources
+# (scripts/build-site.sh); the app, backend and node_modules stay out of the upload.
+mobile
+supabase
+node_modules
+.next
