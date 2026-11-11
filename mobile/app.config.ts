@@ -59,7 +59,13 @@ const appConfig = ({ config }: ConfigContext): ExpoConfig => ({
   ios: {
     bundleIdentifier: BUNDLE_ID,
     supportsTablet: false,
-    icon: './assets/expo.icon',
+    // Home-screen appearances (iOS 18+): light, dark (transparent, the system
+    // adds the backdrop) and tinted (grayscale). Sources: scripts/make-icons.py.
+    icon: {
+      light: './assets/images/icon.png',
+      dark: './assets/images/icon-dark.png',
+      tinted: './assets/images/icon-tinted.png',
+    },
     // Sign in with Apple capability (com.apple.developer.applesignin).
     usesAppleSignIn: true,
     // Universal links for invites: https://<LINKS_DOMAIN>/add/<username>.
@@ -70,6 +76,8 @@ const appConfig = ({ config }: ConfigContext): ExpoConfig => ({
   },
   android: {
     package: BUNDLE_ID,
+    // Adaptive icon: AHOY on the ocean/wave background; monochrome for
+    // Android 13+ themed icons.
     adaptiveIcon: {
       backgroundColor: '#0c4a6e',
       foregroundImage: './assets/images/android-icon-foreground.png',
@@ -97,9 +105,15 @@ const appConfig = ({ config }: ConfigContext): ExpoConfig => ({
     [
       'expo-splash-screen',
       {
-        backgroundColor: '#0a0f1a',
-        image: './assets/images/splash-icon.png',
-        imageWidth: 76,
+        // Follows the system appearance like the app (theme.ts backgrounds).
+        backgroundColor: '#fffbeb',
+        image: './assets/images/splash-icon-light.png',
+        dark: {
+          backgroundColor: '#0a0f1a',
+          image: './assets/images/splash-icon-dark.png',
+        },
+        imageWidth: 240,
+        resizeMode: 'contain',
       },
     ],
     [
@@ -108,6 +122,7 @@ const appConfig = ({ config }: ConfigContext): ExpoConfig => ({
         // Bundled into the iOS app and android/app/src/main/res/raw. Pushes
         // name it as sound: 'ahoy.wav'; the Android channel ahoy-v1 uses it.
         sounds: ['./assets/sounds/ahoy.wav'],
+        // Android status bar: white anchor silhouette (scripts/make-icons.py).
         icon: './assets/images/notification-icon.png',
         color: '#0c4a6e',
         // FCM fallback channel for pushes without a channelId.
