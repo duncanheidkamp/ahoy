@@ -49,3 +49,9 @@ example
 # Firebase client config for Android push (see README "Push notifications")
 google-services.json
 GoogleService-Info.plist
+
+# Store credentials (eas.json submit.production reads the Play key from here or
+# from $GOOGLE_PLAY_SERVICE_ACCOUNT_KEY_PATH). Never commit any of these.
+/secrets/
+*service-account*.json
+AuthKey_*.p8
