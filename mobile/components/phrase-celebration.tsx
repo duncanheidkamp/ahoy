@@ -2,6 +2,8 @@
 // a modal for regular phrases, the PWA's full-screen "Yo!" reveal for the
 // secret one (which, like the PWA, also switches you to it). The server
 // decides what is unlocked (get_my_phrases); see lib/phrases.ts.
+// On a device with no record for this user yet, everything already unlocked
+// is marked seen silently (resolveSeen) — only later unlocks are celebrated.
 
 import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
@@ -10,7 +12,14 @@ import { AccessibilityInfo, Modal, Pressable, StyleSheet, Text, View } from 'rea
 import { useToast } from '@/components/toast'
 import { Button } from '@/components/ui'
 import { kv } from '@/lib/kv'
-import { celebrationFor, createSeenPhrases, newlyUnlocked, shouldRefetchPhrases } from '@/lib/phrases'
+import {
+  autoActivatePhraseId,
+  celebrationFor,
+  createSeenPhrases,
+  newlyUnlocked,
+  resolveSeen,
+  shouldRefetchPhrases,
+} from '@/lib/phrases'
 import { queryKeys, useMyStats, usePhrases, useSetActivePhrase } from '@/lib/queries'
 import { colors, radii, spacing, type } from '@/theme'
 
@@ -23,15 +32,35 @@ export function PhraseCelebrationHost({ userId }: { userId: string }) {
   const stats = useMyStats()
   const setActive = useSetActivePhrase()
   const seenStore = useMemo(() => createSeenPhrases(kv, userId), [userId])
-  const [seen, setSeen] = useState<number[] | null>(null)
+  // Keyed by user so a switch of accounts never uses the previous record.
+  // value: null = this device has no record for the user yet.
+  const [record, setRecord] = useState<{ userId: string; value: number[] | null } | null>(null)
+  const stored = record?.userId === userId ? record.value : undefined
+  const setStored = (value: number[] | null) => setRecord({ userId, value })
 
   useEffect(() => {
     let mounted = true
-    seenStore.get().then((s) => mounted && setSeen(s))
+    seenStore.read().then((value) => mounted && setRecord({ userId, value }))
     return () => {
       mounted = false
     }
-  }, [seenStore])
+  }, [seenStore, userId])
+
+  const resolved = stored === undefined ? { seen: null, baseline: false } : resolveSeen(stored, phrases.data)
+  const seen = resolved.seen
+  const baselineIds = resolved.baseline ? seen : null
+  useEffect(() => {
+    if (!baselineIds) return
+    let mounted = true
+    seenStore
+      .setAll(baselineIds)
+      .then((value) => mounted && setRecord({ userId, value }))
+      .catch(() => mounted && setRecord({ userId, value: baselineIds }))
+    return () => {
+      mounted = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [baselineIds?.join(','), seenStore, userId])
 
   // A send bumps total_sent in the cache; if that crosses a threshold, ask
   // the server (it stays the source of truth).
@@ -46,7 +75,7 @@ export function PhraseCelebrationHost({ userId }: { userId: string }) {
   const current = queue[0] ? celebrationFor(queue[0]) : null
 
   const markSeen = async (id: number) => {
-    setSeen(await seenStore.add(id))
+    setStored(await seenStore.add(id))
   }
 
   const use = async (id: number, text: string) => {
@@ -59,7 +88,7 @@ export function PhraseCelebrationHost({ userId }: { userId: string }) {
   }
 
   // Yo! reveal: switch to it (as the PWA does), auto-dismiss.
-  const yoId = current?.kind === 'yo-reveal' ? current.phrase.id : null
+  const yoId = autoActivatePhraseId(current)
   useEffect(() => {
     if (yoId === null) return
     setActive.mutate(yoId)

@@ -159,6 +159,7 @@ the pre-prompt → system dialog flow; token re-binding when switching accounts.
 | Long-press a crewmate → Remove / Block / Report; Unblock list | `components/crew-actions.tsx`, `app/(app)/report.tsx`, Settings |
 | Delete account (type your username) | `app/(app)/delete-account.tsx`, `lib/delete-account.ts` |
 | Feedback ("message in a bottle") | Settings → `feedback` table |
+| Privacy policy + Terms of use links | Settings (`lib/legal.ts`), `links/` footers |
 
 Behavior worth knowing:
 
@@ -168,11 +169,20 @@ Behavior worth knowing:
 - **Blocks are silent.** Someone who blocked you looks like "no such sailor"
   on an invite link and never shows up in search.
 - **Unlock celebrations** are remembered per user on the device (SecureStore);
-  the server decides what's unlocked. On a new device you'll see each earned
-  unlock once. Yo! gets the PWA's full-screen reveal and, like the PWA,
-  becomes your active phrase.
+  the server decides what's unlocked. The first time a user opens the app on
+  a device (no record yet: new phone, reinstall), everything already unlocked
+  is marked seen silently — no replays, not even the Yo! reveal. Only unlocks
+  after that are celebrated. Yo! gets the PWA's full-screen reveal and, like
+  the PWA, becomes your active phrase.
 - **Pending invite:** opening an invite link signed out (or before picking a
   username) remembers it for 24 h and opens it right after you get in.
+
+- **Terms of use = Apple's standard EULA**
+  (https://www.apple.com/legal/internet-services/itunes/dev/stdeula/), no
+  custom terms. Linked from Settings and the links/ site footers; Phase 6 sets
+  the same URL in App Store Connect (App Information → License Agreement stays
+  "Apple's Standard License Agreement", and the URL goes in the description /
+  review notes as Apple asks for subscription-free apps that link terms).
 
 ### Social login — decisions
 

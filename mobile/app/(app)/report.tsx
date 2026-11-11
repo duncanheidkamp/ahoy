@@ -10,7 +10,7 @@ import { useToast } from '@/components/toast'
 import { Button, TextField } from '@/components/ui'
 import { useUserId } from '@/lib/auth'
 import { blockUser, invalidateCrew, reportUser } from '@/lib/queries'
-import { REPORT_NOTE_MAX, reportErrorMessage, validateReportNote } from '@/lib/reports'
+import { REPORT_ALSO_BLOCK_DEFAULT, REPORT_NOTE_MAX, reportErrorMessage, validateReportNote } from '@/lib/reports'
 import { useQueryClient } from '@tanstack/react-query'
 import { colors, spacing, type } from '@/theme'
 
@@ -22,7 +22,7 @@ export default function ReportScreen() {
   const qc = useQueryClient()
   const { id, username } = useLocalSearchParams<{ id: string; username: string }>()
   const [note, setNote] = useState('')
-  const [alsoBlock, setAlsoBlock] = useState(true)
+  const [alsoBlock, setAlsoBlock] = useState(REPORT_ALSO_BLOCK_DEFAULT)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 

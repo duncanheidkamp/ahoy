@@ -7,6 +7,7 @@ import { Button, Loading, MutedText, SectionTitle, TextField } from '@/component
 import { appVersionLabel } from '@/lib/app-version'
 import { useUserId } from '@/lib/auth'
 import { LINKS_DOMAIN } from '@/lib/env'
+import { legalLinks } from '@/lib/legal'
 import { inviteMessage, inviteUrl } from '@/lib/links'
 import { phraseItems, remainingLabel } from '@/lib/phrases'
 import { getPermission, registrationDeps, requestPermission } from '@/lib/push/native'
@@ -273,13 +274,16 @@ export default function SettingsScreen() {
         <SectionTitle>Leave the ship</SectionTitle>
         <Button title="Log out" variant="secondary" onPress={logOut} loading={loggingOut} />
         <Button title="Delete account" variant="danger" onPress={() => router.push('/delete-account')} />
-        <Text
-          accessibilityRole="link"
-          style={styles.link}
-          onPress={() => Linking.openURL(`https://${LINKS_DOMAIN}/privacy`).catch(() => {})}
-        >
-          Privacy policy
-        </Text>
+        {legalLinks(LINKS_DOMAIN).map((l) => (
+          <Text
+            key={l.url}
+            accessibilityRole="link"
+            style={styles.link}
+            onPress={() => Linking.openURL(l.url).catch(() => {})}
+          >
+            {l.label}
+          </Text>
+        ))}
       </View>
     </ScrollView>
   )

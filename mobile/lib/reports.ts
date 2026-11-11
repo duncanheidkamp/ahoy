@@ -3,6 +3,9 @@
 
 export const REPORT_NOTE_MAX = 500
 
+/** "Also block" starts switched on when reporting (Duncan, Phase 4 review). */
+export const REPORT_ALSO_BLOCK_DEFAULT = true
+
 export type ReportNoteValidation = { valid: true; note: string | null } | { valid: false; error: string }
 
 export function validateReportNote(input: string): ReportNoteValidation {

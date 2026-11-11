@@ -64,14 +64,52 @@ export function celebrationFor(phrase: Phrase): Celebration {
   return phrase.secret ? { kind: 'yo-reveal', phrase } : { kind: 'unlocked', phrase }
 }
 
+/**
+ * The phrase a celebration switches you to on its own, if any. Like the PWA,
+ * unlocking the secret Yo! makes it your active phrase; regular unlocks only
+ * offer "Use it".
+ */
+export function autoActivatePhraseId(celebration: Celebration | null): number | null {
+  return celebration?.kind === 'yo-reveal' ? celebration.phrase.id : null
+}
+
+/**
+ * Which unlocks this device has "seen", given what's stored.
+ *
+ * A device with no record yet for this user (fresh install, new phone, or a
+ * reinstall) takes a silent baseline: everything already unlocked counts as
+ * seen, so old unlocks — Yo! included — are never replayed. Only unlocks
+ * after the baseline are celebrated. Needs the server's phrase list; until it
+ * has loaded, nothing is decided (`seen: null`).
+ */
+export function resolveSeen(
+  stored: readonly number[] | null,
+  rows: readonly Phrase[] | undefined
+): { seen: number[] | null; baseline: boolean } {
+  if (stored) return { seen: [...stored], baseline: false }
+  if (!rows) return { seen: null, baseline: false }
+  return { seen: rows.filter((p) => p.unlocked && p.unlock_at > 0).map((p) => p.id), baseline: true }
+}
+
 export const seenPhrasesKey = (userId: string) => `ahoy.phrases.seen.${userId}`
 
 export function createSeenPhrases(store: JsonStore, userId: string) {
   const key = seenPhrasesKey(userId)
+  const read = async (): Promise<number[] | null> => {
+    const value = await store.get<unknown>(key)
+    return Array.isArray(value) ? value.filter((n): n is number => typeof n === 'number') : null
+  }
   return {
+    /** Seen ids, or null if this device has no record for the user yet. */
+    read,
     async get(): Promise<number[]> {
-      const value = await store.get<unknown>(key)
-      return Array.isArray(value) ? value.filter((n): n is number => typeof n === 'number') : []
+      return (await read()) ?? []
+    },
+    /** Saves the new-device baseline (see resolveSeen). */
+    async setAll(ids: readonly number[]): Promise<number[]> {
+      const next = [...new Set(ids)]
+      await store.set(key, next)
+      return next
     },
     async add(id: number): Promise<number[]> {
       const current = await this.get()
