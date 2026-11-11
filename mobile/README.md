@@ -23,8 +23,8 @@ Layout: `index.ts` (entry: push bootstrap, then expo-router), `app/` routes
 (Expo Router; `(auth)` and `(app)` groups behind an auth gate in
 `app/_layout.tsx`), `components/`, `lib/` (Supabase client, TanStack Query
 hooks in `lib/queries.ts`, pure logic, `lib/push/` for notifications),
-`theme.ts` (all colors, type, spacing, radii, motion). `lib/types.ts` is a copy of
-`../lib/supabase/types.ts` — keep them in sync.
+`theme.ts` (all colors, type, spacing, radii, motion). `lib/types.ts` holds the
+database types (hand-maintained; update with every migration).
 
 ## Push notifications
 
@@ -40,8 +40,8 @@ simulators/emulators can't get Expo push tokens, and Expo Go isn't supported.
    environment variable). The app reads it from `extra.eas.projectId` for
    `getExpoPushTokenAsync({ projectId })`; without it the app never registers.
 2. **Android (can be done first, no Apple account needed).**
-   1. In the [Firebase console](https://console.firebase.google.com) (the same
-      project as the PWA is fine) add an **Android app** with package
+   1. In the [Firebase console](https://console.firebase.google.com) (any
+      project; the one the PWA used is fine) add an **Android app** with package
       `com.duncanheidkamp.ahoy`. Download its `google-services.json`.
    2. Give it to builds **without committing it** (it's gitignored):
       `npx eas-cli@latest env:create --name GOOGLE_SERVICES_JSON --type file --visibility secret --value ./google-services.json --environment development`
@@ -137,8 +137,8 @@ Android launcher dots follow the notifications in the tray instead.
 3. **Android:** a channel's sound is fixed when the channel is first created
    on a device. If any device already has `ahoy-v1`, bump the channel id
    (`ahoy-v2`) in `lib/push/constants.ts`, `app.config.ts` (`defaultChannel`),
-   `../supabase/functions/_shared/push.ts` and `../lib/push/expo.ts`, then
-   redeploy `send-ahoy` and the PWA together with the new build (a push to a
+   `../supabase/functions/_shared/push.ts`, then
+   redeploy `send-ahoy` and `notify-friendship` together with the new build (a push to a
    channel the device doesn't have is not shown). Before anyone has installed
    the app, just replacing the file is enough.
 
@@ -240,7 +240,7 @@ new builds. JS/asset-only changes go out as updates.
 
 Expo can accept a push ("ok" ticket) to a phone that has since uninstalled
 Ahoy; that only shows in the **receipt** later. `send-ahoy`,
-`notify-friendship` and the PWA route store ok tickets in `push_tickets`
+and `notify-friendship` store ok tickets in `push_tickets`
 (service role only, purged after 24 h). Every 30 min pg_cron runs
 `public.run_push_receipt_pruning()`, which POSTs (pg_net) to the
 `prune-push-receipts` Edge Function; it fetches receipts in batches of ≤ 1000
@@ -314,8 +314,10 @@ key, Apple/Google sign-in, links domain).
     messages from `store/crew-invite.md`.
 14. Run `store/launch-checklist.md` with one friend; watch the migration-status
     SQL until everyone has a native token and has received an Ahoy.
-15. Then: the **phase-6-retire-pwa** PR (its description has the exact
-    preconditions and deploy order).
+15. Then retire the PWA (done in the **phase-6-retire-pwa** PR: functions
+    without FCM → static landing page on the old domain → migration
+    `20261120120000_retire_pwa_push`; afterwards
+    `npx supabase secrets unset FCM_SERVICE_ACCOUNT`).
 
 **Later builds:** `npx eas-cli@latest build --profile production --platform all --auto-submit`,
 then iOS: add the build to the Crew group (or set `submit.production.ios.groups`);

@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ahoy! has moved to the app</title>
+  <meta name="description" content="The Ahoy web app has been retired. Get the iPhone or Android app — same account.">
+  <link rel="icon" href="/favicon.ico">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+  <link rel="stylesheet" href="/style.css">
+  <!-- .button sets display:block, which would beat the hidden attribute. -->
+  <style>[hidden] { display: none !important; }</style>
+  <!-- Store links + links domain, copied from links/site-config.js at build time. -->
+  <script src="/site-config.js"></script>
+</head>
+<body>
+  <main>
+    <h1>Ahoy!</h1>
+    <p class="muted">The Ahoy web app has dropped anchor for good. Ahoy now
+      lives in the iPhone and Android app.</p>
+    <div class="card"><div class="username">⚓</div></div>
+
+    <h2>Get the app</h2>
+    <p class="muted">Log in with the <strong>same email and password</strong> —
+      your crew and your Ahoy count are already there.</p>
+    <a class="button primary" data-links-home href="#" hidden>Install page</a>
+    <a class="button secondary" data-store="testflight" href="#" aria-disabled="true">iPhone: TestFlight beta (coming soon)</a>
+    <a class="button secondary" data-store="play" href="#" aria-disabled="true">Android: Google Play test (coming soon)</a>
+    <a class="button secondary" data-store="appstore" href="#" aria-disabled="true">App Store (coming soon)</a>
+
+    <p class="muted">Added Ahoy to your home screen? You can delete that icon
+      now; it only opens this page.</p>
+
+    <footer class="muted"><a href="/privacy">Privacy policy</a> · <a href="/support">Support</a> · <a href="https://www.apple.com/legal/internet-services/itunes/dev/stdeula/">Terms of use</a></footer>
+  </main>
+  <script>
+    // The old PWA registered service workers; replace them with the
+    // self-destructing ones at the same paths (sw.js / firebase-messaging-sw.js),
+    // which unregister themselves and clear the caches.
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(function (regs) {
+        regs.forEach(function (r) { r.update().catch(function () {}); r.unregister(); });
+      }).catch(function () {});
+    }
+    if (window.caches) {
+      caches.keys().then(function (keys) { keys.forEach(function (k) { caches.delete(k); }); }).catch(function () {});
+    }
+    // Link to the links-domain install page when its domain is configured.
+    document.addEventListener('DOMContentLoaded', function () {
+      var domain = (window.AHOY_SITE && window.AHOY_SITE.linksDomain) || '';
+      var el = document.querySelector('[data-links-home]');
+      if (domain && el) {
+        el.href = 'https://' + domain + '/';
+        el.hidden = false;
+      }
+    });
+  </script>
+</body>
+</html>

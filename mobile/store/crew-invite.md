@@ -51,4 +51,4 @@ need to send you the **Google account email** their phone's Play Store uses
 | Notification but no ship's bell | iPhone on silent / Focus mode. Android: "Ahoys" category sound changed by the user — reset it in the app's notification settings. |
 | Invite link opens the website, not the app | Install first, then tap the link again. Still the website: App Links/universal-link setup (`mobile/README.md` → Invite links) — the "Open in Ahoy" button works regardless. |
 | "Ahoy back!" didn't send | It retries next time they open the app (within 15 min). Happens most with the app force-quit on iPhone. |
-| Still getting Ahoys on the old web app too | Expected until the PWA is retired (both get delivered). |
+| Opened the old web app / home-screen icon | It now only shows "Ahoy moved to the app" with the install links; delete the icon. |

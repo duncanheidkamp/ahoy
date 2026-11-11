@@ -94,9 +94,7 @@ Ship (Phase 6)
 Who still hasn't got the native app working (no iOS/Android token):
 
 ```sql
-select u.username, u.created_at,
-       exists (select 1 from public.push_tokens t where t.user_id = u.id and t.platform = 'web')
-         or u.fcm_token is not null as has_web_push
+select u.username, u.created_at
 from public.users u
 where u.username is not null
   and not exists (
@@ -119,5 +117,6 @@ where u.username is not null
 group by u.username
 order by last_ahoy_received nulls first;
 ```
-(`null` = no Ahoy received since their first native token.) Then the PWA can
-be retired (PR "phase-6-retire-pwa").
+(`null` = no Ahoy received since their first native token.) These were the
+preconditions for retiring the PWA (done: migration
+`20261120120000_retire_pwa_push`).

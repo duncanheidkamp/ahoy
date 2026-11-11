@@ -1,4 +1,4 @@
--- Security/RLS checks (Phases 1-6). Runs in one transaction and rolls back.
+-- Security/RLS checks (Phases 1-6, PWA retired). Runs in one transaction and rolls back.
 -- Works against a local Supabase stack (`npx supabase db reset`, then
 --   psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 -f supabase/tests/rls_test.sql)
 -- or a plain Postgres prepared with plain-postgres-stub.sql.
@@ -163,7 +163,17 @@ delete from public.friendships where requester_id = '00000000-0000-0000-0000-000
 -- ---------------------------------------------------------------------------
 -- Private columns + push tokens
 -- ---------------------------------------------------------------------------
-update public.users set fcm_token = 'bob-fcm-secret' where username = 'bob';
+-- PWA retired (20261120120000): no fcm_token column, no web tokens
+do $$ begin
+  assert not exists (select 1 from information_schema.columns
+                     where table_schema = 'public' and table_name = 'users' and column_name = 'fcm_token'),
+    'FAIL: users.fcm_token should be dropped';
+  assert not has_table_privilege('authenticated', 'public.users', 'UPDATE')
+     and not has_any_column_privilege('authenticated', 'public.users', 'UPDATE'),
+    'FAIL: nothing on users should be client-updatable';
+  assert not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'users' and cmd = 'UPDATE'),
+    'FAIL: users update policy should be gone';
+end $$;
 
 set local role authenticated;
 select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
@@ -171,8 +181,8 @@ select public.register_push_token('ExponentPushToken[bob-phone]', 'ios', 'Bob iP
 select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
 do $$ begin
   begin
-    perform fcm_token from public.users;
-    raise exception 'FAIL: fcm_token readable by other users';
+    perform active_phrase_id from public.users;
+    raise exception 'FAIL: active_phrase_id readable by other users';
   exception when insufficient_privilege then null; end;
   begin
     perform * from public.users;
@@ -188,16 +198,18 @@ do $$ begin
     update public.users set active_phrase_id = 3 where id = auth.uid();
     raise exception 'FAIL: active_phrase_id writable directly';
   exception when insufficient_privilege then null; end;
-  update public.users set fcm_token = 'alice-fcm' where id = auth.uid();
-  -- updating someone else's token silently affects 0 rows
-  update public.users set fcm_token = 'pwned' where username = 'bob';
-  assert (select has_fcm_token from public.get_my_profile()) = true, 'own fcm flag';
+  begin
+    update public.users set created_at = now() where id = auth.uid();
+    raise exception 'FAIL: users row writable by its owner';
+  exception when insufficient_privilege then null; end;
+  begin
+    perform public.register_push_token('fcm-web-token', 'web', 'Chrome');
+    raise exception 'FAIL: web push tokens should be refused';
+  exception when check_violation then null; end;
   assert (select active_phrase from public.get_my_profile()) = 'Ahoy!', 'default phrase';
+  assert (select username from public.get_my_profile()) = 'alice', 'own profile';
 end $$;
 reset role;
-do $$ begin
-  assert (select fcm_token from public.users where username = 'bob') = 'bob-fcm-secret', 'bob token untouched';
-end $$;
 
 -- token moving to another account goes through register_push_token
 set local role authenticated;

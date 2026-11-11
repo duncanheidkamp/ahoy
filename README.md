@@ -9,10 +9,10 @@ notification with a ship's bell, and "Ahoy back!" right from the lock screen.
 | **Backend**: Postgres schema, RLS, RPCs | [`supabase/migrations/`](supabase/migrations/) (source of truth) | Supabase |
 | **Edge Functions**: `send-ahoy`, `notify-friendship`, `notify-report`, `delete-account`, `prune-push-receipts` | [`supabase/functions/`](supabase/functions/) | Supabase (Deno) |
 | **Links site**: invite links `/add/<name>`, universal/App Links files, install page, `/privacy`, `/support` | [`links/`](links/) | its own Vercel project, root `links/` |
-| *Legacy* Next.js PWA (being retired once the crew is on the app) | `app/`, `components/`, `lib/`, `public/` | Vercel |
+| **Old PWA domain**: "Ahoy moved to the app" page + self-unregistering service workers | [`site/`](site/), built by `scripts/build-site.sh` (root `vercel.json`) | the original PWA Vercel project |
 
-The app and the PWA share one Supabase project, so web accounts log in to the
-app unchanged.
+The Next.js PWA was retired in Phase 6; its accounts live on in the same
+Supabase project and log in to the app unchanged.
 
 ## Quick start
 
@@ -40,6 +40,3 @@ No Docker? The RLS checks also run on a plain Postgres 15+ — see the header of
 - [`CLAUDE.md`](CLAUDE.md) — schema, RPCs, Edge Functions, environment
   variables, conventions.
 - [`links/README.md`](links/README.md) — the links site.
-
-Legacy PWA: `npm install && npm run dev` at the repo root (needs the Firebase
-env vars in `CLAUDE.md`).

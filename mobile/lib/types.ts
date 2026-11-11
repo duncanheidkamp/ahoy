@@ -1,7 +1,6 @@
-// COPY of ../../lib/supabase/types.ts (the PWA's hand-maintained types, which
-// match supabase/migrations). Keep the two in sync when the schema changes:
-//   cp ../lib/supabase/types.ts lib/types.ts  (then restore this header)
-// Metro cannot import files outside mobile/ without extra config, hence the copy.
+// Database types, hand-maintained to match ../supabase/migrations. This is the
+// only copy since the PWA (and its lib/supabase/types.ts) was retired: update
+// it in the same change as any migration.
 
 export type Json =
   | string
@@ -12,14 +11,14 @@ export type Json =
   | Json[]
 
 export type FriendshipStatus = 'pending' | 'accepted' | 'declined'
-export type PushPlatform = 'ios' | 'android' | 'web'
+export type PushPlatform = 'ios' | 'android'
 export type SendAhoyFailure = 'not_friends' | 'blocked' | 'rate_limited' | 'invalid_request' | 'no_username'
 /** get_user_card().relation */
 export type UserRelation = 'self' | 'crew' | 'requested' | 'incoming' | 'blocked' | 'none'
 
-// Hand-maintained to match supabase/migrations. Regenerate with
-//   npx supabase gen types typescript --local > lib/supabase/types.ts
-// (then re-add the helper types at the bottom).
+// To compare with the real schema:
+//   npx supabase gen types typescript --local > /tmp/generated.ts
+// (keep the helper types at the bottom of this file).
 
 export interface Database {
   public: {
@@ -29,8 +28,6 @@ export interface Database {
           id: string
           /** null for a social-login account that hasn't picked one yet (claim_username) */
           username: string | null
-          /** Private: not readable by other users (column privileges). */
-          fcm_token: string | null
           created_at: string
           /** Private: read via get_my_profile(), set via set_active_phrase(). */
           active_phrase_id: number
@@ -38,14 +35,12 @@ export interface Database {
         Insert: {
           id: string
           username?: string | null
-          fcm_token?: string | null
           created_at?: string
           active_phrase_id?: number
         }
         Update: {
           id?: string
           username?: string | null
-          fcm_token?: string | null
           created_at?: string
           active_phrase_id?: number
         }
@@ -378,7 +373,6 @@ export interface Database {
           created_at: string
           active_phrase_id: number
           active_phrase: string
-          has_fcm_token: boolean
         }[]
       }
       get_my_phrases: {
