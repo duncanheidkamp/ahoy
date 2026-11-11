@@ -22,7 +22,7 @@ Layout: `index.ts` (entry: push bootstrap, then expo-router), `app/` routes
 (Expo Router; `(auth)` and `(app)` groups behind an auth gate in
 `app/_layout.tsx`), `components/`, `lib/` (Supabase client, TanStack Query
 hooks in `lib/queries.ts`, pure logic, `lib/push/` for notifications),
-`theme.ts` (all colors/type). `lib/types.ts` is a copy of
+`theme.ts` (all colors, type, spacing, radii, motion). `lib/types.ts` is a copy of
 `../lib/supabase/types.ts` — keep them in sync.
 
 ## Push notifications
@@ -147,6 +147,52 @@ back!" from the lock screen and with the app suspended/killed (iOS especially);
 Android headless task under Doze/battery savers; per-sender grouping on iOS;
 the pre-prompt → system dialog flow; token re-binding when switching accounts.
 
+## Design (Phase 5)
+
+| Piece | Where |
+|---|---|
+| Tokens: dark + parchment-light palettes, type scale, spacing, radii, motion (all ≤ 300 ms) | `theme.ts` — `useTheme()`, `createStyles()`; no other file may hard-code a color/font (test) |
+| Light/dark | `userInterfaceStyle: 'automatic'`; dark when the OS doesn't say. Status bar + root view color follow the theme (`app/_layout.tsx`) |
+| Pirata One (titles, section/nav headers, phrase flash, banner title, unlock/Yo! reveals) | `@expo-google-fonts/pirata-one`, loaded in `app/_layout.tsx` before the splash hides; system sans everywhere else |
+| Moments: wave sweep + phrase scale-in on send (medium haptic), success haptic on an ahoy received in the foreground, sliding toasts/banner | `components/crew-row.tsx`, `lib/push/foreground.ts`, `lib/motion.ts` |
+| Reduce Motion → every moment becomes a short fade | `lib/motion.ts` (`moments()`), `components/motion.ts` (`useMoments()`) |
+| Empty / error / loading states in one voice ("Lost at sea — …") | `components/ui.tsx` (`EmptyState`, `RowSkeleton`, `CardSkeleton`, `ErrorText`, `LinkText`) |
+| Icons, splash, notification icon | `scripts/make-icons.py` → `assets/images/` (see below) |
+
+Accessibility rules the code follows: Dynamic Type everywhere (only Pirata
+One display text has a `maxFontSizeMultiplier`, from `maxFontScale`); crew
+rows grow, and from font scale 1.6 the badge/count drop under the name;
+every pressable has a role + label; 44pt minimum targets; every text/background
+pair is ≥ 4.5:1 in both modes (`__tests__/theme.test.ts`). Locked phrases are
+outlined, not dimmed, to keep contrast.
+
+### Icons and splash
+
+`python3 scripts/make-icons.py` (Pillow) redraws everything from code: the
+PWA's white AHOY wordmark (Bebas Neue, OFL, `scripts/fonts/`, used only by the
+script) on the ocean palette with teal waves. Outputs: `icon.png` (iOS light
++ default), `icon-dark.png` / `icon-tinted.png` (iOS 18 dark/tinted, transparent),
+`android-icon-{foreground,background,monochrome}.png`,
+`splash-icon-{light,dark}.png`, `notification-icon.png` (white anchor, 96×96).
+Icons/splash are native: a change needs a new build, not an OTA update.
+Swapping in a designer-made icon later = replace these files (same names) —
+or an Icon Composer `.icon` for iOS 26 Liquid Glass via `ios.icon`.
+
+### Phase 6 checklist (store assets — not possible without a device)
+
+- [ ] Screenshots: iPhone 6.9" (1320×2868) and 6.5" (1284×2778), Android
+      phone (1080×1920+); Crew list, a send mid-flash, Settings phrases,
+      invite card. Take one set in dark and consider one in light.
+- [ ] Google Play feature graphic (1024×500) and 512×512 hi-res icon (export
+      `icon.png` at 512).
+- [ ] Check on real devices: home-screen icon in light/dark/tinted (iOS 18+),
+      Android themed (monochrome) icon, splash in both appearances, the
+      notification anchor in the status bar, Pirata One rendering, the wave
+      animation feel, haptics, Reduce Motion, and the largest Dynamic Type /
+      font size on every screen.
+- [ ] App Store Connect: privacy policy URL (`https://<links domain>/privacy`),
+      license agreement = Apple's standard EULA (above).
+
 ## Social features (Phase 4)
 
 | Feature | Where |
@@ -179,10 +225,9 @@ Behavior worth knowing:
 
 - **Terms of use = Apple's standard EULA**
   (https://www.apple.com/legal/internet-services/itunes/dev/stdeula/), no
-  custom terms. Linked from Settings and the links/ site footers; Phase 6 sets
-  the same URL in App Store Connect (App Information → License Agreement stays
-  "Apple's Standard License Agreement", and the URL goes in the description /
-  review notes as Apple asks for subscription-free apps that link terms).
+  custom terms. Linked from Settings (`lib/legal.ts`) and the links/ site
+  footers. Phase 6: leave App Store Connect → App Information → License
+  Agreement on Apple's standard one and reference the same URL there.
 
 ### Social login — decisions
 

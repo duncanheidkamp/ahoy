@@ -111,7 +111,7 @@ export default function SignUpScreen() {
       <Button title="Sign up" onPress={onSubmit} loading={busy} disabled={!canSubmit} />
 
       <View style={styles.footer}>
-        <Text style={styles.muted}>Already aboard?</Text>
+        <Text style={styles.footerText}>Already aboard?</Text>
         <Link href="/log-in" replace style={styles.link} accessibilityRole="link">
           Log in
         </Link>
@@ -124,6 +124,7 @@ const useStyles = createStyles((c) => ({
   title: { ...type.title, color: c.accent, textAlign: 'center' },
   subtitle: { ...type.body, color: c.textMuted, textAlign: 'center' },
   muted: { ...type.small, color: c.textMuted },
+  footerText: { ...type.body, color: c.textMuted },
   bad: { ...type.small, color: c.dangerText },
   footer: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: spacing.sm },
   link: { ...type.bodyBold, color: c.link, minHeight: minTouch, paddingVertical: spacing.md, textDecorationLine: 'underline' },
