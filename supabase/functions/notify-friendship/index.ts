@@ -27,8 +27,13 @@ Deno.serve((req) => {
       return row ?? { ok: false, reason: 'invalid_request', kind: null, recipient_id: null, actor_username: null }
     },
     async expoTokensFor(userId) {
-      const { data } = await admin.from('push_tokens').select('token, platform').eq('user_id', userId)
-      return (data ?? []).filter((t) => t.platform !== 'web').map((t) => t.token as string)
+      // Native (Expo) tokens only; see send-ahoy for why the filter stays.
+      const { data } = await admin
+        .from('push_tokens')
+        .select('token')
+        .eq('user_id', userId)
+        .in('platform', ['ios', 'android'])
+      return (data ?? []).map((t) => t.token as string)
     },
     sendExpo: sendExpoMessages,
     async deleteTokens(tokens) {

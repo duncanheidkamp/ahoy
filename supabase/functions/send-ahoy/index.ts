@@ -6,7 +6,7 @@
 // phrase unlocked) are enforced in public.record_ahoy().
 
 import { adminClient, authenticate, corsHeaders, json } from '../_shared/http.ts'
-import { sendExpoPushes, sendFcmWebPush, type AhoyPush } from '../_shared/push.ts'
+import { sendExpoPushes, type AhoyPush } from '../_shared/push.ts'
 import { storeTickets } from '../_shared/tickets.ts'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -60,36 +60,22 @@ Deno.serve(async (req) => {
     senderUsername: result.sender_username!,
   }
 
-  // Delivery is best effort: the ahoy is already recorded.
-  const [{ data: tokens }, { data: receiver }] = await Promise.all([
-    admin.from('push_tokens').select('token, platform').eq('user_id', receiverId),
-    admin.from('users').select('fcm_token').eq('id', receiverId).maybeSingle(),
+  // Delivery is best effort: the ahoy is already recorded. The platform filter
+  // keeps any leftover 'web' (FCM) rows out of the Expo request until migration
+  // 20261120120000 deletes them — an invalid token can fail a whole Expo batch.
+  const { data: tokens } = await admin
+    .from('push_tokens')
+    .select('token')
+    .eq('user_id', receiverId)
+    .in('platform', ['ios', 'android'])
+  const expo = await sendExpoPushes((tokens ?? []).map((t) => t.token as string), push)
+
+  // Ok tickets are checked again later for receipts (prune-push-receipts);
+  // tokens Expo already reports as dead go now.
+  await Promise.all([
+    storeTickets(admin, expo.tickets),
+    expo.deadTokens.length > 0 ? admin.from('push_tokens').delete().in('token', expo.deadTokens) : null,
   ])
-
-  const expoTokens = (tokens ?? []).filter((t) => t.platform !== 'web').map((t) => t.token as string)
-  const webTokens = new Set((tokens ?? []).filter((t) => t.platform === 'web').map((t) => t.token as string))
-  const legacyFcm = (receiver?.fcm_token as string | null) ?? null
-  if (legacyFcm) webTokens.add(legacyFcm)
-
-  const [expo, ...fcmOutcomes] = await Promise.all([
-    sendExpoPushes(expoTokens, push),
-    ...[...webTokens].map(async (token) => ({ token, outcome: await sendFcmWebPush(token, push) })),
-  ])
-
-  // Prune dead tokens.
-  const deadPushTokens = [
-    ...expo.deadTokens,
-    ...fcmOutcomes.filter((o) => o.outcome === 'unregistered').map((o) => o.token),
-  ]
-  // Ok tickets are checked again later for receipts (prune-push-receipts).
-  const cleanup: PromiseLike<unknown>[] = [storeTickets(admin, expo.tickets)]
-  if (deadPushTokens.length > 0) {
-    cleanup.push(admin.from('push_tokens').delete().in('token', deadPushTokens))
-  }
-  if (legacyFcm && deadPushTokens.includes(legacyFcm)) {
-    cleanup.push(admin.from('users').update({ fcm_token: null }).eq('id', receiverId).eq('fcm_token', legacyFcm))
-  }
-  await Promise.all(cleanup)
 
   if (expo.errors.length > 0) console.error('expo push errors', expo.errors)
 
@@ -99,8 +85,7 @@ Deno.serve(async (req) => {
     phrase: result.phrase,
     delivered: {
       expo: expo.sent,
-      web: fcmOutcomes.filter((o) => o.outcome === 'sent').length,
-      pruned: deadPushTokens.length,
+      pruned: expo.deadTokens.length,
     },
   })
 })
