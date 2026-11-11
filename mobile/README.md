@@ -13,7 +13,8 @@ npm run typecheck && npm run lint
 npx expo start                # then open the dev build on your phone
 ```
 
-Builds: `npx eas-cli@latest build --profile development --platform ios|android`.
+Builds: `npx eas-cli@latest build --profile development --platform ios|android`
+(store builds and TestFlight / Play: see **Ship it** below).
 Cloud builds don't see `.env`; add every `EXPO_PUBLIC_*` value (Supabase URL +
 anon key, links domain, Google client IDs) with
 `npx eas-cli@latest env:create` for each EAS environment you build.
@@ -128,7 +129,8 @@ Android launcher dots follow the notifications in the tray instead.
    seconds** (iOS silently falls back to the default sound if longer; aim for
    1–3 s). E.g.
    `ffmpeg -i ahoy-take3.m4a -ac 1 -ar 44100 -c:a pcm_s16le -t 3 assets/sounds/ahoy.wav`
-2. Replace `mobile/assets/sounds/ahoy.wav` and make a **new native build**
+2. Replace `mobile/assets/sounds/ahoy.wav`, bump `APP_VERSION` in
+   `app.config.ts` and make a **new native build**
    (the file is bundled by the `expo-notifications` config plugin `sounds`
    option; an OTA update can't change it — only the in-app foreground sound
    would update).
@@ -146,6 +148,178 @@ Delivery to a locked phone and the custom sound (both platforms); "Ahoy
 back!" from the lock screen and with the app suspended/killed (iOS especially);
 Android headless task under Doze/battery savers; per-sender grouping on iOS;
 the pre-prompt → system dialog flow; token re-binding when switching accounts.
+
+## Ship it (Phase 6)
+
+Goal: the crew installs from **TestFlight** (iPhone) and **Google Play internal
+testing** (Android). No public store listings yet (a new personal Play account
+needs a 12-tester / 14-day closed test first). Paperwork to paste lives in
+[`store/`](store/):
+
+| File | What |
+|---|---|
+| [`store/app-store-connect.md`](store/app-store-connect.md) | ASC record, TestFlight text, review notes + demo account, age rating, App Privacy label |
+| [`store/google-play.md`](store/google-play.md) | Play app, internal testing steps, App content, content rating, Data safety |
+| [`store/screenshots.md`](store/screenshots.md) | Current required sizes + shot list (not needed for TestFlight/internal) |
+| [`store/crew-invite.md`](store/crew-invite.md) | The text to send friends + troubleshooting |
+| [`store/launch-checklist.md`](store/launch-checklist.md) | Definition of done on two real phones + migration-status SQL |
+
+### Build profiles (`eas.json`)
+
+| Profile | What | Distribution | Update channel |
+|---|---|---|---|
+| `development` | dev client, your phone | internal (APK / ad hoc) | `development` |
+| `development-simulator` | dev client, iOS simulator | internal | `development` |
+| `preview` | release build without dev client, for quick installs | internal (APK / ad hoc) | `preview` |
+| `production` | TestFlight / Play: iOS store build, Android **app bundle**; build number / versionCode auto-incremented on EAS (`appVersionSource: remote`) | store | `production` |
+
+`submit.production`: iOS uses `ascAppId` + `appleTeamId` (placeholders until
+you create the ASC record — `eas submit` refuses them with a clear message);
+Android submits to `track: internal` as `releaseStatus: draft` with the key
+from `$GOOGLE_PLAY_SERVICE_ACCOUNT_KEY_PATH` or the gitignored
+`mobile/secrets/google-play-service-account.json`.
+
+### Over-the-air updates (EAS Update)
+
+`expo-updates` is configured from `EAS_PROJECT_ID` (`updates.url =
+https://u.expo.dev/<id>`); without the id updates are off. Each build profile
+listens to its own channel (table above). Publish JS-only fixes with:
+
+```bash
+npx eas-cli@latest update --channel production --environment production --message "fix typo"
+```
+
+The app checks on launch without waiting and applies a downloaded update on
+the next cold start.
+
+**`runtimeVersion` policy: `appVersion`.** An update reaches only binaries
+whose `version` (`APP_VERSION` in `app.config.ts`) matches. Picked over
+`fingerprint` because `app.config.ts` depends on env vars that differ between
+the build machine and wherever you run `eas update` (`EAS_BUILD_PROFILE` sets
+the APNs entitlement, `GOOGLE_SERVICES_JSON` is a machine-specific path), which
+would make fingerprints disagree and updates silently never apply. The price:
+**bump `APP_VERSION` whenever anything native changes** — a new native
+package or config plugin, `ahoy.wav`, icons/splash, permissions, associated
+domains / links domain, Google iOS client id, an Expo SDK upgrade — then make
+new builds. JS/asset-only changes go out as updates.
+
+### Store hygiene built into the config
+
+- **iOS background modes:** none. `expo-task-manager` always adds `fetch`;
+  `app.config.ts` strips it. The only task is Android's notification-action
+  task; on iOS "Ahoy back!" is a notification action (no background mode
+  needed) and there are no silent pushes, so no `remote-notification` either.
+- `ITSAppUsesNonExemptEncryption: false` (HTTPS only) → no export-compliance
+  question per TestFlight build.
+- **Privacy manifest** (`ios.privacyManifests` → `PrivacyInfo.xcprivacy`):
+  no tracking; required-reason APIs = the union of what the native deps
+  declare (UserDefaults CA92.1; file timestamp C617.1, 0A2A.1, 3B52.1; system
+  boot time 35F9.1; disk space E174.1, 85F4.1). Ahoy has no AsyncStorage
+  (SecureStore/Keychain isn't a required-reason API). Recheck after adding a
+  native dependency: `find node_modules -name PrivacyInfo.xcprivacy`.
+- **No stray usage strings:** no camera/mic/location/photos/contacts keys;
+  `NSFaceIDUsageDescription` removed (`expo-secure-store` `faceIDPermission:
+  false`); the dev launcher's local-network keys are dropped from
+  preview/production builds.
+- **Android permissions:** blocked `SYSTEM_ALERT_WINDOW`,
+  `READ/WRITE_EXTERNAL_STORAGE`, `RECORD_AUDIO`. Kept `INTERNET`,
+  `POST_NOTIFICATIONS`, `RECEIVE_BOOT_COMPLETED`, `VIBRATE`,
+  `MODIFY_AUDIO_SETTINGS` (expo-audio; install-time, no prompt),
+  `ACCESS_NETWORK_STATE` (expo-updates).
+- **targetSdk 36 / compileSdk 37 / minSdk 24** are the Expo SDK 58 (React
+  Native 0.88) defaults — Google Play has required target API 36 for new apps
+  and updates since 31 Aug 2026. No `expo-build-properties` override; when
+  Play announces API 37, upgrading the Expo SDK is the normal path (or add
+  `expo-build-properties` with `android.targetSdkVersion`).
+- Checked with `npx expo prebuild --no-install --clean` in a temp copy
+  (`EAS_BUILD_PROFILE=production`); the final merged AndroidManifest is only
+  visible in a real Gradle build (EAS build logs, or `bundletool dump
+  manifest` on the `.aab`).
+
+### Push receipts (dead-token cleanup)
+
+Expo can accept a push ("ok" ticket) to a phone that has since uninstalled
+Ahoy; that only shows in the **receipt** later. `send-ahoy`,
+`notify-friendship` and the PWA route store ok tickets in `push_tickets`
+(service role only, purged after 24 h). Every 30 min pg_cron runs
+`public.run_push_receipt_pruning()`, which POSTs (pg_net) to the
+`prune-push-receipts` Edge Function; it fetches receipts in batches of ≤ 1000
+and deletes tokens reported `DeviceNotRegistered`. (`notify-report` sends
+email, not pushes, so it has no tickets.) Setup is in the steps below.
+
+### TestFlight builds expire after 90 days
+
+Every TestFlight build stops launching **90 days after upload**; testers see
+"This beta has expired". Upload a new production build (same or bumped
+version) before then — an OTA update does not extend it. Set yourself a
+reminder ~80 days after each upload. Play internal-testing builds don't expire.
+
+### Duncan's steps, in order
+
+Assumes the Apple Developer Program and Google Play developer accounts are
+approved, and the Phase 3/4 setup above is done (EAS project, Firebase/FCM V1
+key, Apple/Google sign-in, links domain).
+
+**Backend (once)**
+
+1. `npx supabase link --project-ref <ref>` → `npx supabase db push` (adds
+   `push_tickets`, the pruning function and the cron job). If the push prints
+   *pg_cron missing* / *pg_cron not enabled*: Dashboard → Database →
+   Extensions → enable **pg_cron** and **pg_net**, then run in the SQL editor:
+   `select cron.schedule('prune-push-receipts', '*/30 * * * *', 'select public.run_push_receipt_pruning()');`
+2. Make a random secret (`openssl rand -hex 32`) and store it twice — SQL
+   editor:
+   `select vault.create_secret('https://<ref>.supabase.co', 'project_url');`
+   `select vault.create_secret('<secret>', 'prune_receipts_secret');`
+   and `npx supabase secrets set PRUNE_RECEIPTS_SECRET=<secret>`.
+3. Deploy: `npx supabase functions deploy send-ahoy notify-friendship prune-push-receipts`
+   (config.toml turns JWT verification off for `prune-push-receipts`; it
+   checks the secret). Check after a while: `select * from
+   cron.job_run_details order by start_time desc limit 5;` →
+   "receipts check requested" / "no tickets due".
+
+**iOS → TestFlight**
+
+4. Create the app record and fill `ascAppId` / `appleTeamId` in `eas.json`
+   (`store/app-store-connect.md` §1); commit.
+5. EAS environment **production** has every value: `npx eas-cli@latest env:list --environment production`
+   → `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY`,
+   `EAS_PROJECT_ID`, `EXPO_PUBLIC_LINKS_DOMAIN`, `EXPO_PUBLIC_GOOGLE_*`,
+   `GOOGLE_SERVICES_JSON` (file).
+6. `npx eas-cli@latest build --profile production --platform ios` — log in
+   with your Apple ID; let EAS create the distribution certificate,
+   provisioning profile and (if not done) the APNs key.
+7. `npx eas-cli@latest submit --profile production --platform ios --latest` —
+   let EAS create an App Store Connect API key when asked. Processing in
+   TestFlight takes ~5–30 min.
+8. TestFlight: fill Test Information, create the demo accounts, create the
+   external group **Crew**, add the build, submit for Beta App Review, enable
+   the **Public Link** (`store/app-store-connect.md` §4). Install it yourself
+   first via the link.
+
+**Android → Play internal testing**
+
+9. Create the app, tester list, then the **manual first upload** of the
+   production `.aab` and roll it out (`store/google-play.md` §2 steps 1–2).
+10. Copy Play's **app signing** SHA-256 into `links/.well-known/assetlinks.json`
+    and its SHA-1 into a new Google OAuth Android client (§2 step 3); deploy
+    `links/`. Install from the join link yourself first.
+11. Service account for later `eas submit` (§2).
+
+**Crew**
+
+12. Put the TestFlight public link and the Play join link into
+    `links/site-config.js` (and optionally a support email), deploy `links/`.
+13. Collect Android friends' Google emails → Play tester list. Send the
+    messages from `store/crew-invite.md`.
+14. Run `store/launch-checklist.md` with one friend; watch the migration-status
+    SQL until everyone has a native token and has received an Ahoy.
+15. Then: the **phase-6-retire-pwa** PR (its description has the exact
+    preconditions and deploy order).
+
+**Later builds:** `npx eas-cli@latest build --profile production --platform all --auto-submit`,
+then iOS: add the build to the Crew group (or set `submit.production.ios.groups`);
+Android: roll out the draft in Play Console. JS-only: `eas update` (above).
 
 ## Design (Phase 5)
 
@@ -178,20 +352,10 @@ Icons/splash are native: a change needs a new build, not an OTA update.
 Swapping in a designer-made icon later = replace these files (same names) —
 or an Icon Composer `.icon` for iOS 26 Liquid Glass via `ios.icon`.
 
-### Phase 6 checklist (store assets — not possible without a device)
+### Store assets
 
-- [ ] Screenshots: iPhone 6.9" (1320×2868) and 6.5" (1284×2778), Android
-      phone (1080×1920+); Crew list, a send mid-flash, Settings phrases,
-      invite card. Take one set in dark and consider one in light.
-- [ ] Google Play feature graphic (1024×500) and 512×512 hi-res icon (export
-      `icon.png` at 512).
-- [ ] Check on real devices: home-screen icon in light/dark/tinted (iOS 18+),
-      Android themed (monochrome) icon, splash in both appearances, the
-      notification anchor in the status bar, Pirata One rendering, the wave
-      animation feel, haptics, Reduce Motion, and the largest Dynamic Type /
-      font size on every screen.
-- [ ] App Store Connect: privacy policy URL (`https://<links domain>/privacy`),
-      license agreement = Apple's standard EULA (above).
+Screenshot sizes, shot list and the real-device design checks moved to
+[`store/screenshots.md`](store/screenshots.md) (Phase 6).
 
 ## Social features (Phase 4)
 
@@ -328,7 +492,9 @@ Setup (Duncan), once the domain is chosen:
 5. New native build (associated domains / intent filter are native). Apple's
    CDN caches the AASA — allow up to a day, or use
    `applinks:<domain>?mode=developer` while testing.
-6. Fill `STORE_LINKS` in `links/add.html` once there are store/TestFlight URLs.
+6. Fill `links/site-config.js` (TestFlight public link, Play join link, later
+   the App Store URL, optional support email) — used by `/`, `/add/*` and
+   `/support`.
 
 ## Reports
 

@@ -1,4 +1,4 @@
--- Security/RLS checks (Phases 1-4). Runs in one transaction and rolls back.
+-- Security/RLS checks (Phases 1-6). Runs in one transaction and rolls back.
 -- Works against a local Supabase stack (`npx supabase db reset`, then
 --   psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 -f supabase/tests/rls_test.sql)
 -- or a plain Postgres prepared with plain-postgres-stub.sql.
@@ -667,12 +667,127 @@ do $$ begin
 end $$;
 
 -- ---------------------------------------------------------------------------
+-- Push receipts (Phase 6): push_tickets is service-role only; the cron job
+-- purges old tickets and calls prune-push-receipts only when configured
+-- ---------------------------------------------------------------------------
+set local role service_role;
+insert into public.push_tickets (ticket_id, token, created_at) values
+  ('ticket-fresh', 'ExponentPushToken[bob-phone]', now()),
+  ('ticket-due', 'ExponentPushToken[bob-phone]', now() - interval '20 minutes'),
+  ('ticket-stale', 'ExponentPushToken[bob-phone]', now() - interval '25 hours');
+do $$ begin
+  assert (select count(*) from public.push_tickets) = 3, 'FAIL: service role should read push_tickets';
+end $$;
+reset role;
+
+-- unknown tokens are refused (tickets only for registered devices)
+do $$ begin
+  begin
+    insert into public.push_tickets (ticket_id, token) values ('t-x', 'ExponentPushToken[nobody]');
+    raise exception 'FAIL: ticket for an unknown token accepted';
+  exception when foreign_key_violation then null; end;
+end $$;
+
+set local role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
+do $$ begin
+  begin
+    perform 1 from public.push_tickets;
+    raise exception 'FAIL: authenticated can read push_tickets';
+  exception when insufficient_privilege then null; end;
+  begin
+    insert into public.push_tickets (ticket_id, token) values ('t-client', 'ExponentPushToken[bob-phone]');
+    raise exception 'FAIL: authenticated can insert push_tickets';
+  exception when insufficient_privilege then null; end;
+  begin
+    delete from public.push_tickets;
+    raise exception 'FAIL: authenticated can delete push_tickets';
+  exception when insufficient_privilege then null; end;
+  begin
+    perform public.run_push_receipt_pruning();
+    raise exception 'FAIL: authenticated can run the pruning job';
+  exception when insufficient_privilege then null; end;
+end $$;
+reset role;
+
+set local role anon;
+do $$ begin
+  begin
+    perform 1 from public.push_tickets;
+    raise exception 'FAIL: anon can read push_tickets';
+  exception when insufficient_privilege then null; end;
+end $$;
+reset role;
+
+set local role service_role;
+do $$ begin
+  begin
+    perform public.run_push_receipt_pruning();
+    raise exception 'FAIL: service_role can run the pruning job (cron/postgres only)';
+  exception when insufficient_privilege then null; end;
+end $$;
+reset role;
+
+-- the job is scheduled every 30 minutes (whenever pg_cron is present)
+do $$ begin
+  if to_regnamespace('cron') is not null then
+    assert (select schedule from cron.job where jobname = 'prune-push-receipts') = '*/30 * * * *',
+      'FAIL: prune-push-receipts not scheduled every 30 minutes';
+    assert (select command from cron.job where jobname = 'prune-push-receipts') like '%run_push_receipt_pruning()%',
+      'FAIL: cron job runs the wrong command';
+  else
+    raise notice 'pg_cron not installed: skipping the schedule check';
+  end if;
+end $$;
+
+-- without Vault secrets: purges >24 h tickets, requests nothing
+create temp table _net_before as select count(*) as n from net.http_request_queue;
+do $$
+declare v text;
+begin
+  v := public.run_push_receipt_pruning();
+  assert v like 'purged 1;%not set', 'FAIL: unconfigured run returned ' || v;
+  assert not exists (select 1 from public.push_tickets where ticket_id = 'ticket-stale'), 'FAIL: stale ticket not purged';
+  assert (select count(*) from public.push_tickets) = 2, 'FAIL: fresh/due tickets must be kept';
+  assert (select count(*) from net.http_request_queue) = (select n from _net_before),
+    'FAIL: unconfigured job must not call the Edge Function';
+end $$;
+
+-- with Vault secrets and a due ticket: one POST to the function with the secret header
+do $$ begin
+  perform vault.create_secret('https://ref.supabase.co/', 'project_url');
+  perform vault.create_secret('s3cret', 'prune_receipts_secret');
+end $$;
+do $$
+declare v text;
+begin
+  v := public.run_push_receipt_pruning();
+  assert v like 'purged 0;%requested', 'FAIL: configured run returned ' || v;
+  assert (select count(*) from net.http_request_queue) = (select n from _net_before) + 1, 'FAIL: expected one request';
+  assert (select url from net.http_request_queue order by id desc limit 1)
+    = 'https://ref.supabase.co/functions/v1/prune-push-receipts', 'FAIL: wrong function URL';
+  assert (select headers ->> 'x-cron-secret' from net.http_request_queue order by id desc limit 1) = 's3cret',
+    'FAIL: secret header missing';
+end $$;
+
+-- nothing due yet (only a fresh ticket): no request
+delete from public.push_tickets where ticket_id = 'ticket-due';
+do $$
+declare v text;
+begin
+  v := public.run_push_receipt_pruning();
+  assert v like '%no tickets due', 'FAIL: run with nothing due returned ' || v;
+  assert (select count(*) from net.http_request_queue) = (select n from _net_before) + 1, 'FAIL: no new request expected';
+end $$;
+
+-- ---------------------------------------------------------------------------
 -- Account deletion cascade
 -- ---------------------------------------------------------------------------
 delete from auth.users where id = '00000000-0000-0000-0000-00000000000b';
 do $$ begin
   assert pg_temp.uid('bob') is null, 'bob profile removed';
   assert (select count(*) from public.push_tokens) = 0, 'bob push tokens removed';
+  assert (select count(*) from public.push_tickets) = 0, 'FAIL: bob''s push tickets should go with his tokens';
   assert (select count(*) from public.friendships where requester_id = pg_temp.uid('alice')
           and status = 'accepted') = 0, 'friendship removed';
   assert (select count(*) from public.ahoys where sender_id = pg_temp.uid('alice')) = 1530,

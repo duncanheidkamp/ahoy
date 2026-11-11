@@ -2,7 +2,13 @@
 // unit-tested (supabase/functions/_tests/notify_friendship_test.ts).
 
 import { corsHeaders, json } from '../_shared/http.ts'
-import { friendshipMessage, type ExpoMessage, type ExpoResult, type FriendshipPushKind } from '../_shared/push.ts'
+import {
+  friendshipMessage,
+  type ExpoMessage,
+  type ExpoResult,
+  type ExpoTicketRef,
+  type FriendshipPushKind,
+} from '../_shared/push.ts'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -22,6 +28,8 @@ export interface NotifyDeps {
   expoTokensFor(userId: string): Promise<string[]>
   sendExpo(messages: ExpoMessage[]): Promise<ExpoResult>
   deleteTokens(tokens: string[]): Promise<void>
+  /** Keep ok tickets for the later receipts check (push_tickets). */
+  storeTickets(tickets: ExpoTicketRef[]): Promise<void>
 }
 
 // Refusals the app may see. It fires and forgets, so these are informational;
@@ -77,6 +85,7 @@ export async function handleNotifyFriendship(req: Request, deps: NotifyDeps): Pr
   )
   const result = await deps.sendExpo(messages)
   if (result.deadTokens.length > 0) await deps.deleteTokens(result.deadTokens)
+  if (result.tickets.length > 0) await deps.storeTickets(result.tickets)
   if (result.errors.length > 0) console.error('expo push errors', result.errors)
 
   return json({ ok: true, notified: true, kind: claim.kind, delivered: result.sent, pruned: result.deadTokens.length })

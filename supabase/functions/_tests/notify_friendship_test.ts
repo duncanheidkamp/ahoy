@@ -1,6 +1,6 @@
 import { deepStrictEqual as assertEquals } from 'node:assert/strict'
 
-import type { ExpoMessage } from '../_shared/push.ts'
+import type { ExpoMessage, ExpoTicketRef } from '../_shared/push.ts'
 import { handleNotifyFriendship, type ClaimResult, type NotifyDeps } from '../notify-friendship/handler.ts'
 
 const CALLER = '22222222-2222-4222-8222-222222222222'
@@ -8,7 +8,12 @@ const RECIPIENT = '33333333-3333-4333-8333-333333333333'
 const FRIENDSHIP = '44444444-4444-4444-8444-444444444444'
 
 function deps(claim: Partial<ClaimResult> | Error, overrides: Partial<NotifyDeps> = {}) {
-  const log = { claims: [] as string[][], sent: [] as ExpoMessage[][], deleted: [] as string[][] }
+  const log = {
+    claims: [] as string[][],
+    sent: [] as ExpoMessage[][],
+    deleted: [] as string[][],
+    tickets: [] as ExpoTicketRef[][],
+  }
   const d: NotifyDeps = {
     authenticate: () => Promise.resolve({ id: CALLER }),
     claim: (caller, id) => {
@@ -19,10 +24,19 @@ function deps(claim: Partial<ClaimResult> | Error, overrides: Partial<NotifyDeps
     expoTokensFor: () => Promise.resolve(['ExponentPushToken[r1]', 'ExponentPushToken[r2]']),
     sendExpo: (messages) => {
       log.sent.push(messages)
-      return Promise.resolve({ sent: 1, deadTokens: ['ExponentPushToken[r2]'], errors: [] })
+      return Promise.resolve({
+        sent: 1,
+        deadTokens: ['ExponentPushToken[r2]'],
+        tickets: [{ id: 'ticket-r1', token: 'ExponentPushToken[r1]' }],
+        errors: [],
+      })
     },
     deleteTokens: (t) => {
       log.deleted.push(t)
+      return Promise.resolve()
+    },
+    storeTickets: (t) => {
+      log.tickets.push(t)
       return Promise.resolve()
     },
     ...overrides,
@@ -64,6 +78,7 @@ Deno.test('claims as the verified caller (never a client-supplied id) and pushes
     actorUsername: 'erin',
   })
   assertEquals(log.deleted, [['ExponentPushToken[r2]']])
+  assertEquals(log.tickets, [[{ id: 'ticket-r1', token: 'ExponentPushToken[r1]' }]])
   assertEquals((await res.json()).notified, true)
 })
 
