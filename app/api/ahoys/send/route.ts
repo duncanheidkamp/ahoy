@@ -83,6 +83,20 @@ export async function POST(request: NextRequest) {
 
     const dead = [...expo.deadTokens, ...fcm.filter((f) => f.outcome === 'unregistered').map((f) => f.token)]
     const cleanup: PromiseLike<unknown>[] = []
+    // Ok tickets get their receipts checked later (prune-push-receipts).
+    if (expo.tickets.length > 0) {
+      cleanup.push(
+        admin
+          .from('push_tickets')
+          .upsert(
+            expo.tickets.map((t) => ({ ticket_id: t.id, token: t.token })),
+            { onConflict: 'ticket_id', ignoreDuplicates: true }
+          )
+          .then(({ error }) => {
+            if (error) console.error('push_tickets insert failed:', error)
+          })
+      )
+    }
     if (dead.length > 0) cleanup.push(admin.from('push_tokens').delete().in('token', dead))
     if (legacyFcm && dead.includes(legacyFcm)) {
       cleanup.push(admin.from('users').update({ fcm_token: null }).eq('id', receiverId).eq('fcm_token', legacyFcm))

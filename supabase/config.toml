@@ -450,3 +450,12 @@ enabled = true
 verify_jwt = true
 import_map = "./functions/notify-report/deno.json"
 entrypoint = "./functions/notify-report/index.ts"
+
+# Not for clients: called by pg_cron through pg_net with a shared secret
+# (x-cron-secret = PRUNE_RECEIPTS_SECRET), which the function checks itself.
+# The gateway's JWT check is off because the caller has no user JWT.
+[functions.prune-push-receipts]
+enabled = true
+verify_jwt = false
+import_map = "./functions/prune-push-receipts/deno.json"
+entrypoint = "./functions/prune-push-receipts/index.ts"

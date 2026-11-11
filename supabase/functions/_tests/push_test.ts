@@ -72,6 +72,7 @@ Deno.test('sendExpoMessages maps tickets back to tokens and finds dead ones', as
     const r = await sendExpoPushes(['t0', 't1', 't2'], { phrase: 'Ahoy!', senderId: SENDER, senderUsername: 'a' })
     assertEquals(r.sent, 1)
     assertEquals(r.deadTokens, ['t1'])
+    assertEquals(r.tickets, [{ id: 'ticket-0', token: 't0' }])
     assertEquals(r.errors.length, 1)
     assertEquals(f.calls.length, 1)
     assertEquals((f.calls[0][0] as { data: { type: string } }).data.type, 'ahoy')

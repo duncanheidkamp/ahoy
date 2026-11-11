@@ -15,17 +15,20 @@ export interface ExpoResult {
   sent: number
   /** Tokens Expo reported as DeviceNotRegistered — safe to delete. */
   deadTokens: string[]
+  /** Ok tickets, stored in push_tickets for the later receipts check (prune-push-receipts). */
+  tickets: { id: string; token: string }[]
   errors: string[]
 }
 
 interface ExpoTicket {
   status: 'ok' | 'error'
+  id?: string
   message?: string
   details?: { error?: string }
 }
 
 export async function sendExpoPushes(tokens: string[], push: AhoyPush): Promise<ExpoResult> {
-  const result: ExpoResult = { sent: 0, deadTokens: [], errors: [] }
+  const result: ExpoResult = { sent: 0, deadTokens: [], tickets: [], errors: [] }
   if (tokens.length === 0) return result
 
   const headers: Record<string, string> = {
@@ -57,8 +60,10 @@ export async function sendExpoPushes(tokens: string[], push: AhoyPush): Promise<
         continue
       }
       payload.data.forEach((ticket, idx) => {
-        if (ticket.status === 'ok') result.sent++
-        else if (ticket.details?.error === 'DeviceNotRegistered') result.deadTokens.push(batch[idx])
+        if (ticket.status === 'ok') {
+          result.sent++
+          if (ticket.id) result.tickets.push({ id: ticket.id, token: batch[idx] })
+        } else if (ticket.details?.error === 'DeviceNotRegistered') result.deadTokens.push(batch[idx])
         else result.errors.push(`${ticket.details?.error ?? 'error'}: ${ticket.message ?? ''}`)
       })
     } catch (err) {

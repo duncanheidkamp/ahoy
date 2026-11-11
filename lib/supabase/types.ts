@@ -224,6 +224,32 @@ export interface Database {
           }
         ]
       }
+      push_tickets: {
+        // Service role only (no client privileges). Expo ticket ids awaiting a receipts check.
+        Row: {
+          ticket_id: string
+          token: string
+          created_at: string
+        }
+        Insert: {
+          ticket_id: string
+          token: string
+          created_at?: string
+        }
+        Update: {
+          ticket_id?: string
+          token?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'push_tickets_token_fkey'
+            columns: ['token']
+            referencedRelation: 'push_tokens'
+            referencedColumns: ['token']
+          }
+        ]
+      }
       blocks: {
         Row: {
           blocker_id: string

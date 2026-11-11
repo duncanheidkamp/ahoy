@@ -7,6 +7,7 @@
 
 import { adminClient, authenticate, corsHeaders, json } from '../_shared/http.ts'
 import { sendExpoPushes, sendFcmWebPush, type AhoyPush } from '../_shared/push.ts'
+import { storeTickets } from '../_shared/tickets.ts'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -80,7 +81,8 @@ Deno.serve(async (req) => {
     ...expo.deadTokens,
     ...fcmOutcomes.filter((o) => o.outcome === 'unregistered').map((o) => o.token),
   ]
-  const cleanup: PromiseLike<unknown>[] = []
+  // Ok tickets are checked again later for receipts (prune-push-receipts).
+  const cleanup: PromiseLike<unknown>[] = [storeTickets(admin, expo.tickets)]
   if (deadPushTokens.length > 0) {
     cleanup.push(admin.from('push_tokens').delete().in('token', deadPushTokens))
   }

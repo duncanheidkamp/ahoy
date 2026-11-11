@@ -10,6 +10,7 @@
 
 import { adminClient, authenticate } from '../_shared/http.ts'
 import { sendExpoMessages } from '../_shared/push.ts'
+import { storeTickets } from '../_shared/tickets.ts'
 import { handleNotifyFriendship, type ClaimResult } from './handler.ts'
 
 Deno.serve((req) => {
@@ -33,5 +34,6 @@ Deno.serve((req) => {
     async deleteTokens(tokens) {
       await admin.from('push_tokens').delete().in('token', tokens)
     },
+    storeTickets: (tickets) => storeTickets(admin, tickets),
   })
 })
