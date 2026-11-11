@@ -9,28 +9,38 @@
 <body>
   <main class="prose">
     <h1>Privacy Policy</h1>
-    <p class="muted">Last updated: November 2026</p>
+    <p class="muted">Last updated: November 2026 (v2)</p>
 
     <p>Ahoy! is a tiny app for sending one-tap "Ahoy!" hails to friends. We keep
     as little as we can, only to make that work.</p>
 
     <h2>What we store</h2>
     <ul>
-      <li><strong>Account:</strong> your email address and your username. If you
-        sign in with Apple or Google we receive your email (or Apple's private
-        relay address) from them; we don't receive or keep your password for
-        those accounts.</li>
+      <li><strong>Account:</strong> your email address, your username and an
+        account ID. If you sign in with Apple or Google we receive your email (or
+        Apple's private relay address) from them; we don't receive or keep your
+        password for those accounts. Google sign-in also sends your name and
+        profile-photo link, which our sign-in provider stores with your account;
+        Ahoy doesn't show them to anyone.</li>
       <li><strong>Your crew:</strong> who you've added, who you've asked to add,
         and who you've blocked.</li>
       <li><strong>Ahoy counts:</strong> a record of each Ahoy sent (sender,
         receiver, phrase, time). It powers counts, badges and phrase unlocks.
         Your total sent is visible to people who can find you.</li>
       <li><strong>Push tokens:</strong> a device token per phone so we can
-        deliver notifications, plus the device name your phone reports.</li>
+        deliver notifications, plus the device name your phone reports. After
+        each notification we keep the delivery receipt ID for up to 24 hours to
+        spot phones that no longer exist, then delete it.</li>
       <li><strong>Reports and feedback:</strong> if you report someone or send
-        feedback, we keep what you wrote, who it was about, and the app
-        version.</li>
+        feedback, we keep what you wrote, who it was about, and (for feedback)
+        the app version and platform.</li>
     </ul>
+    <p>Usernames you search for are used to answer the search and not stored.
+    Like any web service, our providers keep short-lived server logs (for
+    example sign-in events with IP address) for security.</p>
+    <p>All of it is sent over encrypted connections (HTTPS) and linked to your
+    account. It's used only to run Ahoy: your account, your crew, sending and
+    counting Ahoys, notifications, and handling reports and support.</p>
 
     <h2>What we don't do</h2>
     <ul>
@@ -50,8 +60,9 @@
     reports you filed and the Ahoys you sent. Ahoys you <em>received</em> stay
     in the sender's count but no longer point to you. If you signed in with
     Apple, we also ask Apple to revoke Ahoy's access.</p>
-    <p>Can't get into the app? Contact us via the support link on the App Store
-    or Google Play listing and we'll delete it for you.</p>
+    <p>Can't get into the app? Follow the steps on the
+    <a href="/support#delete-account">support page</a> and we'll delete it for
+    you. Logging out removes that phone's push token.</p>
 
     <h2>Children</h2>
     <p>Ahoy! isn't directed to children under 13 and we don't knowingly collect
@@ -60,7 +71,7 @@
     <h2>Changes</h2>
     <p>If this policy changes, we'll update this page and the date above.</p>
 
-    <footer class="muted"><a href="/">Ahoy!</a> · <a href="https://www.apple.com/legal/internet-services/itunes/dev/stdeula/">Terms of use</a></footer>
+    <footer class="muted"><a href="/">Ahoy!</a> · <a href="/support">Support</a> · <a href="https://www.apple.com/legal/internet-services/itunes/dev/stdeula/">Terms of use</a></footer>
   </main>
 </body>
 </html>
